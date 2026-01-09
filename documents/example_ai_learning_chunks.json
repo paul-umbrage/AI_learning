@@ -1,0 +1,20 @@
+[
+  {
+    "filename": "example_ai_learning.pdf",
+    "page_number": 1,
+    "chunk_index": 0,
+    "chunk_text": "Introduction to Artificial Intelligence\nWhat is Artificial Intelligence?\nArtificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines capable of performing tasks that typically require human intelligence. These tasks include learning, reasoning, problem-solving, perception, and language understanding.\nMachine Learning is a subset of AI that enables computers to learn and improve from experience without being explicitly programmed. It uses algorithms to analyze data, identify patterns, and make decisions or predictions.\nDeep Learning is a further subset of machine learning that uses neural networks with multiple layers to model and understand complex patterns in data. It has revolutionized fields such as image recognition, natural language processing, and speech recognition.\nKey Concepts:\n1. Supervised Learning: The algorithm learns from labeled training data, making predictions or decisions based on input-output pairs.\n2. Unsupervised Learning: The algorithm finds hidden patterns in data without labeled examples, such as clustering or dimensionality reduction.\n3. Reinforcement Learning: An agent learns to make decisions by interacting with an environment and receiving rewards or penalties for its actions."
+  },
+  {
+    "filename": "example_ai_learning.pdf",
+    "page_number": 2,
+    "chunk_index": 0,
+    "chunk_text": "Natural Language Processing\nNatural Language Processing (NLP) is a field of AI that focuses on the interaction between computers and human language. It enables machines to understand, interpret, and generate human language in a valuable way.\nKey NLP Tasks:\n- Text Classification: Categorizing text into predefined classes\n- Named Entity Recognition: Identifying entities like names, locations, dates\n- Sentiment Analysis: Determining the emotional tone of text\n- Machine Translation: Translating text from one language to another\n- Question Answering: Answering questions based on context\nModern NLP uses transformer architectures, such as BERT and GPT, which have achieved remarkable results in understanding and generating human language. These models are trained on vast amounts of text data and can perform a wide variety of language tasks.\nEmbeddings are vector representations of words or sentences that capture semantic meaning. They allow machines to understand relationships between words and concepts, enabling similarity searches and context understanding."
+  },
+  {
+    "filename": "example_ai_learning.pdf",
+    "page_number": 3,
+    "chunk_index": 0,
+    "chunk_text": "Retrieval-Augmented Generation (RAG)\nRetrieval-Augmented Generation, or RAG, is a technique that combines information retrieval with generative AI models. It enhances the capabilities of language models by providing them with relevant context from external knowledge sources.\nHow RAG Works:\n1. Document Ingestion: Documents are processed, chunked, and converted into embeddings that are stored in a vector database.\n2. Query Processing: When a user asks a question, the query is converted into an embedding and used to search for similar document chunks.\n3. Context Retrieval: The most relevant chunks are retrieved from the vector database based on semantic similarity.\n4. Response Generation: The retrieved context is provided to the language model along with the user's question, enabling it to generate accurate and contextually relevant responses.\nBenefits of RAG:\n- Up-to-date information: Can access current information not in training data\n- Source citations: Can cite specific documents and pages\n- Reduced hallucinations: Grounded in actual documents\n- Domain-specific knowledge: Can be customized for specific domains\nThis approach is particularly useful for building chatbots that can answer questions about specific documents, such as research papers, manuals, or company knowledge bases."
+  }
+]

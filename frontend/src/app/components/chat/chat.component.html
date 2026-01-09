@@ -1,0 +1,101 @@
+<div class="chat-container">
+  <div class="chat-header">
+    <h2>AI Chat Assistant</h2>
+    <p class="subtitle">Powered by OpenAI with RAG & Function Calling</p>
+    
+    <!-- Feature Toggles -->
+    <div class="feature-toggles">
+      <label class="toggle-label">
+        <input type="checkbox" [checked]="useRag()" (change)="toggleRag()">
+        <span>RAG (Retrieval-Augmented Generation)</span>
+      </label>
+      <label class="toggle-label">
+        <input type="checkbox" [checked]="useFunctions()" (change)="toggleFunctions()">
+        <span>Function Calling</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="messages-container">
+    @for (message of messages(); track $index) {
+      <div class="message" [class.user-message]="message.isUser" [class.ai-message]="!message.isUser">
+        <div class="message-content">
+          <div class="message-text">{{ message.text }}</div>
+          
+          <!-- RAG Sources -->
+          @if (message.sources && message.sources.length > 0) {
+            <div class="sources-section">
+              <div class="sources-header">📚 Sources:</div>
+              @for (source of message.sources; track source.chunk_index) {
+                <div class="source-item">
+                  <span class="source-filename">{{ source.filename }}</span>
+                  <span class="source-page">Page {{ source.page_number }}</span>
+                  <span class="source-similarity">Similarity: {{ source.similarity | number:'1.2-2' }}</span>
+                </div>
+              }
+            </div>
+          }
+          
+          <!-- Function Calls -->
+          @if (message.functionCalls && message.functionCalls.length > 0) {
+            <div class="functions-section">
+              <div class="functions-header">🔧 Functions Used:</div>
+              @for (funcCall of message.functionCalls; track $index) {
+                <div class="function-item">
+                  <span class="function-name">{{ funcCall.function }}()</span>
+                  <div class="function-details">
+                    <div class="function-args">Args: {{ funcCall.arguments | json }}</div>
+                    <div class="function-result">Result: {{ funcCall.result }}</div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+          
+          <div class="message-time">{{ message.timestamp | date:'short' }}</div>
+        </div>
+      </div>
+    }
+    
+    @if (isLoading()) {
+      <div class="message ai-message">
+        <div class="message-content">
+          <div class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  @if (error()) {
+    <div class="error-message">
+      {{ error() }}
+    </div>
+  }
+
+  <div class="input-container">
+    <textarea
+      [(ngModel)]="userMessage"
+      (keydown)="onKeyPress($event)"
+      placeholder="Type your message here... (Press Enter to send)"
+      rows="3"
+      [disabled]="isLoading()"
+      class="message-input"
+    ></textarea>
+    <button
+      (click)="sendMessage()"
+      [disabled]="isLoading() || !userMessage.trim()"
+      class="send-button"
+    >
+      <span>Send</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
