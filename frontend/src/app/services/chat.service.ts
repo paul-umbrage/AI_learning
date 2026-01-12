@@ -75,5 +75,9 @@ export class ChatService {
     };
     return this.http.post<ChatResponse>(`${this.apiUrl}/chat`, request);
   }
+
+  getPdfs(): Observable<{ pdfs: string[], pdf_documents?: any[] }> {
+    return this.http.get<{ pdfs: string[], pdf_documents?: any[] }>(`${this.apiUrl}/pdfs`);
+  }
 }
 

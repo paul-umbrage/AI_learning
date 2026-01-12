@@ -1,119 +1,174 @@
-<div class="chat-container">
-  <div class="chat-header">
-    <h2>AI Chat Assistant</h2>
-    <p class="subtitle">Powered by OpenAI with RAG & Function Calling</p>
-    
-    <!-- Feature Toggles -->
-    <div class="feature-toggles">
-      <label class="toggle-label">
-        <input type="checkbox" [checked]="useRag()" (change)="toggleRag()">
-        <span>RAG (Retrieval-Augmented Generation)</span>
-      </label>
-      <label class="toggle-label">
-        <input type="checkbox" [checked]="useFunctions()" (change)="toggleFunctions()">
-        <span>Function Calling</span>
-      </label>
+<div class="app-layout">
+  <!-- Left Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h3>Settings</h3>
     </div>
-    
-    <!-- Filename Filter -->
-    @if (useRag()) {
-      <div class="filename-filter">
-        <label for="filename-input">Filter by Filename (optional):</label>
-        <input
-          id="filename-input"
-          type="text"
-          [(ngModel)]="filenameFilter"
-          (ngModelChange)="onFilenameChange($event)"
-          placeholder="e.g., example_ai_learning.pdf"
-          class="filename-input"
-        />
-        @if (filenameFilter) {
-          <button (click)="clearFilenameFilter()" class="clear-btn" title="Clear filter">×</button>
-        }
-      </div>
-    }
-    
-    <!-- Advanced Options Toggle -->
-    <div class="advanced-toggle">
-      <button (click)="toggleAdvancedOptions()" class="advanced-toggle-btn">
-        <span>{{ showAdvancedOptions() ? '▼' : '▶' }} Advanced Options</span>
-      </button>
-    </div>
-    
-    <!-- Advanced Options Panel -->
-    @if (showAdvancedOptions()) {
-      <div class="advanced-options">
-        @if (useRag()) {
-          <div class="option-group">
-            <label class="option-label">
-              <input type="checkbox" [(ngModel)]="useReranking">
-              <span>Use Reranking</span>
-            </label>
-            @if (useReranking) {
-              <select [(ngModel)]="rerankStrategy" class="option-select">
-                @for (strategy of rerankStrategies; track strategy) {
-                  <option [value]="strategy">{{ strategy }}</option>
-                }
-              </select>
-            }
-          </div>
-          
-          <div class="option-group">
-            <label class="option-label">
-              <input type="checkbox" [(ngModel)]="useHybridSearch">
-              <span>Use Hybrid Search</span>
-            </label>
-            @if (useHybridSearch) {
-              <div class="weight-controls">
-                <label>Vector Weight: {{ vectorWeight | number:'1.1-1' }}</label>
-                <input type="range" min="0" max="1" step="0.1" [(ngModel)]="vectorWeight" (ngModelChange)="updateVectorWeight($event)" class="weight-slider">
-                <label>Keyword Weight: {{ keywordWeight | number:'1.1-1' }}</label>
-                <input type="range" min="0" max="1" step="0.1" [(ngModel)]="keywordWeight" (ngModelChange)="updateKeywordWeight($event)" class="weight-slider">
-              </div>
-            }
-          </div>
-          
-          <div class="option-group">
-            <label class="option-label">
-              <input type="checkbox" [(ngModel)]="useQueryExpansion">
-              <span>Use Query Expansion</span>
-            </label>
-          </div>
-          
-          <div class="option-group">
-            <label class="option-label">
-              <input type="checkbox" [(ngModel)]="detectHallucinations">
-              <span>Detect Hallucinations</span>
-            </label>
-            @if (detectHallucinations) {
-              <label class="option-label sub-option">
-                <input type="checkbox" [(ngModel)]="useLlmVerification">
-                <span>Use LLM Verification (more accurate)</span>
-              </label>
-            }
-          </div>
-        }
-        
-        <div class="option-group">
-          <label class="option-label">
-            <span>Prompt Strategy:</span>
-            <select [(ngModel)]="promptStrategy" class="option-select">
-              @for (strategy of promptStrategies; track strategy.value) {
-                <option [value]="strategy.value">{{ strategy.label }}</option>
-              }
-            </select>
+
+    <div class="sidebar-content">
+      <!-- Feature Toggles -->
+      <div class="sidebar-section">
+        <h4 class="section-title">Features</h4>
+        <div class="feature-toggles">
+          <label class="toggle-label">
+            <input type="checkbox" [checked]="useRag()" (change)="toggleRag()">
+            <span>RAG (Retrieval-Augmented Generation)</span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" [checked]="useFunctions()" (change)="toggleFunctions()">
+            <span>Function Calling</span>
           </label>
         </div>
       </div>
-    }
-  </div>
 
-  <div class="messages-container">
+      <!-- Filename Filter -->
+      @if (useRag()) {
+        <div class="sidebar-section">
+          <h4 class="section-title">Document Filter</h4>
+
+          <!-- PDF Selector -->
+          <div class="pdf-selector">
+            <label for="pdf-select">Select PDF:</label>
+            @if (isLoadingPdfs) {
+              <div class="loading-pdfs">Loading PDFs...</div>
+            } @else {
+              <select
+                id="pdf-select"
+                [(ngModel)]="selectedPdf"
+                (ngModelChange)="onPdfSelected($event)"
+                class="pdf-select"
+              >
+                <option value="">All PDFs</option>
+                @for (pdf of availablePdfs; track pdf) {
+                  <option [value]="pdf">{{ pdf }}</option>
+                }
+              </select>
+              @if (availablePdfs.length === 0) {
+                <div class="no-pdfs-hint">No PDFs available. Upload one to get started.</div>
+              }
+            }
+          </div>
+
+          <!-- Manual Filename Input -->
+          <div class="filename-filter">
+            <label for="filename-input">Or enter filename manually:</label>
+            <input
+              id="filename-input"
+              type="text"
+              [(ngModel)]="filenameFilter"
+              (ngModelChange)="onFilenameChange($event)"
+              placeholder="e.g., example_ai_learning.pdf"
+              class="filename-input"
+            />
+            @if (filenameFilter) {
+              <button (click)="clearFilenameFilter()" class="clear-btn" title="Clear filter">×</button>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Advanced Options -->
+      <div class="sidebar-section">
+        <h4 class="section-title">
+          <button (click)="toggleAdvancedOptions()" class="section-toggle">
+            {{ showAdvancedOptions() ? '▼' : '▶' }} Advanced Options
+          </button>
+        </h4>
+
+        @if (showAdvancedOptions()) {
+          <div class="advanced-options">
+            @if (useRag()) {
+              <div class="option-group">
+                <label class="option-label">
+                  <input type="checkbox" [(ngModel)]="useReranking">
+                  <span>Use Reranking</span>
+                </label>
+                @if (useReranking) {
+                  <select [(ngModel)]="rerankStrategy" class="option-select">
+                    @for (strategy of rerankStrategies; track strategy) {
+                      <option [value]="strategy">{{ strategy }}</option>
+                    }
+                  </select>
+                }
+              </div>
+
+              <div class="option-group">
+                <label class="option-label">
+                  <input type="checkbox" [(ngModel)]="useHybridSearch">
+                  <span>Use Hybrid Search</span>
+                </label>
+                @if (useHybridSearch) {
+                  <div class="weight-controls">
+                    <label>Vector Weight: {{ vectorWeight | number:'1.1-1' }}</label>
+                    <input type="range" min="0" max="1" step="0.1" [(ngModel)]="vectorWeight" (ngModelChange)="updateVectorWeight($event)" class="weight-slider">
+                    <label>Keyword Weight: {{ keywordWeight | number:'1.1-1' }}</label>
+                    <input type="range" min="0" max="1" step="0.1" [(ngModel)]="keywordWeight" (ngModelChange)="updateKeywordWeight($event)" class="weight-slider">
+                  </div>
+                }
+              </div>
+
+              <div class="option-group">
+                <label class="option-label">
+                  <input type="checkbox" [(ngModel)]="useQueryExpansion">
+                  <span>Use Query Expansion</span>
+                </label>
+              </div>
+
+              <div class="option-group">
+                <label class="option-label">
+                  <input type="checkbox" [(ngModel)]="detectHallucinations">
+                  <span>Detect Hallucinations</span>
+                </label>
+                @if (detectHallucinations) {
+                  <label class="option-label sub-option">
+                    <input type="checkbox" [(ngModel)]="useLlmVerification">
+                    <span>Use LLM Verification (more accurate)</span>
+                  </label>
+                }
+              </div>
+            }
+
+            <div class="option-group">
+              <label class="option-label">
+                <span>Prompt Strategy:</span>
+                <select [(ngModel)]="promptStrategy" class="option-select">
+                  @for (strategy of promptStrategies; track strategy.value) {
+                    <option [value]="strategy.value">{{ strategy.label }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- Upload Link -->
+      <div class="sidebar-section upload-link-section">
+        <a routerLink="/upload" class="upload-link">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Upload PDF Document
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Side - Chat Interface -->
+  <div class="chat-container">
+    <div class="chat-header">
+      <h2>AI Chat Assistant</h2>
+      <p class="subtitle">Powered by OpenAI with RAG & Function Calling</p>
+    </div>
+
+    <div class="messages-container">
     @for (message of messages(); track $index) {
       <div class="message" [class.user-message]="message.isUser" [class.ai-message]="!message.isUser">
         <div class="message-content">
           <div class="message-text">{{ message.text }}</div>
-          
+
           <!-- RAG Sources -->
           @if (message.sources && message.sources.length > 0) {
             <div class="sources-section">
@@ -136,7 +191,7 @@
               }
             </div>
           }
-          
+
           <!-- Function Calls -->
           @if (message.functionCalls && message.functionCalls.length > 0) {
             <div class="functions-section">
@@ -152,12 +207,12 @@
               }
             </div>
           }
-          
+
           <div class="message-time">{{ message.timestamp | date:'short' }}</div>
         </div>
       </div>
     }
-    
+
     @if (isLoading()) {
       <div class="message ai-message">
         <div class="message-content">
@@ -197,6 +252,7 @@
         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
       </svg>
     </button>
+  </div>
   </div>
 </div>
 

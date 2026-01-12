@@ -1,6 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy } from '@angular/core';
+import { Router, NavigationEnd } from '@angular/router';
+import { filter } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 import { ChatService, Source, FunctionCall } from '../../services/chat.service';
 
 interface Message {
@@ -14,21 +18,25 @@ interface Message {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.css'
 })
-export class ChatComponent {
+export class ChatComponent implements OnInit, OnDestroy {
+  private routerSubscription?: Subscription;
   messages = signal<Message[]>([]);
   userMessage = '';
   isLoading = signal(false);
   error = signal<string | null>(null);
-  
+
   // Feature toggles
   useRag = signal(true);
   useFunctions = signal(false);
   filenameFilter = '';
-  
+  availablePdfs: string[] = [];
+  selectedPdf: string = '';
+  isLoadingPdfs = false;
+
   // Advanced options
   showAdvancedOptions = signal(false);
   useReranking = true;
@@ -40,13 +48,13 @@ export class ChatComponent {
   useQueryExpansion = false;
   detectHallucinations = false;
   useLlmVerification = false;
-  
+
   // Source expansion state
   expandedSources = new Set<number>();
-  
+
   // Reranking strategies
   rerankStrategies = ['combined', 'threshold', 'keyword', 'diversity', 'length'];
-  
+
   // Prompt strategies
   promptStrategies = [
     { value: undefined, label: 'Auto-select' },
@@ -57,13 +65,62 @@ export class ChatComponent {
     { value: 'qna', label: 'Q&A' }
   ];
 
-  constructor(private chatService: ChatService) {
+  constructor(private chatService: ChatService, private router: Router) {
     // Add welcome message
     this.messages.set([{
       text: 'Hello! I\'m your AI assistant. How can I help you today?',
       isUser: false,
       timestamp: new Date()
     }]);
+  }
+
+  ngOnInit() {
+    this.loadPdfs();
+
+    // Refresh PDF list when returning from upload page
+    this.routerSubscription = this.router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe((event: any) => {
+        if (event.url === '/') {
+          this.loadPdfs();
+        }
+      });
+  }
+
+  ngOnDestroy() {
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
+    }
+  }
+
+  loadPdfs() {
+    this.isLoadingPdfs = true;
+    this.chatService.getPdfs().subscribe({
+      next: (response) => {
+        // Use pdf_documents if available, otherwise fall back to simple pdfs list
+        if (response.pdf_documents && response.pdf_documents.length > 0) {
+          this.availablePdfs = response.pdf_documents.map((doc: any) => doc.filename);
+        } else {
+          this.availablePdfs = response.pdfs || [];
+        }
+        this.isLoadingPdfs = false;
+      },
+      error: (err) => {
+        console.error('Failed to load PDFs:', err);
+        this.availablePdfs = [];
+        this.isLoadingPdfs = false;
+      }
+    });
+  }
+
+  onPdfSelected(pdf: string) {
+    if (pdf === '') {
+      this.filenameFilter = '';
+      this.selectedPdf = '';
+    } else {
+      this.filenameFilter = pdf;
+      this.selectedPdf = pdf;
+    }
   }
 
   sendMessage() {
@@ -137,10 +194,15 @@ export class ChatComponent {
 
   onFilenameChange(value: string) {
     this.filenameFilter = value;
+    // Clear selected PDF if manually typing
+    if (value !== this.selectedPdf) {
+      this.selectedPdf = '';
+    }
   }
 
   clearFilenameFilter() {
     this.filenameFilter = '';
+    this.selectedPdf = '';
   }
 
   toggleSourcePreview(chunkIndex: number) {

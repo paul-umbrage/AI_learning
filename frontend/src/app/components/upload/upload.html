@@ -1,0 +1,115 @@
+<div class="upload-container">
+  <div class="upload-header">
+    <h2>Upload PDF Document</h2>
+    <p class="subtitle">Upload and ingest PDF files for RAG retrieval</p>
+    <a routerLink="/" class="back-link">← Back to Chat</a>
+  </div>
+
+  <div class="upload-content">
+    <div class="upload-card">
+      <div class="upload-section">
+        <label for="file-input" class="file-label">
+          <div class="file-input-area">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span class="file-label-text">Click to select PDF or drag and drop</span>
+            <span class="file-label-hint">PDF files only</span>
+          </div>
+          <input
+            id="file-input"
+            type="file"
+            accept=".pdf"
+            (change)="onFileSelected($event)"
+            class="file-input"
+            [disabled]="isUploading"
+          />
+        </label>
+
+        @if (selectedFile) {
+          <div class="file-info">
+            <div class="file-details">
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">({{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB)</span>
+              <button (click)="removeFile()" class="remove-btn" [disabled]="isUploading">×</button>
+            </div>
+          </div>
+        }
+
+        @if (isUploading) {
+          <div class="upload-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" [style.width.%]="uploadProgress"></div>
+            </div>
+            <div class="progress-info">
+              <span class="progress-text">{{ uploadProgress }}%</span>
+              @if (uploadMessage) {
+                <span class="progress-message">{{ uploadMessage }}</span>
+              }
+            </div>
+          </div>
+        }
+
+        @if (uploadStatus === 'error') {
+          <div class="error-message">
+            {{ uploadMessage }}
+          </div>
+        }
+
+        @if (uploadStatus === 'success') {
+          <div class="success-message">
+            {{ uploadMessage }}
+          </div>
+        }
+
+        <button
+          (click)="uploadFile()"
+          [disabled]="!selectedFile || isUploading"
+          class="upload-button"
+        >
+          @if (isUploading) {
+            <span>Uploading...</span>
+          } @else {
+            <span>Upload and Ingest PDF</span>
+          }
+        </button>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <h3>What happens after upload?</h3>
+      <ul>
+        <li>PDF text is extracted and chunked</li>
+        <li>Embeddings are generated using OpenAI</li>
+        <li>Chunks are stored in the database</li>
+        <li>Document becomes available for RAG queries</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Confirmation Popup -->
+  @if (showConfirmation && uploadResult) {
+    <div class="confirmation-overlay" (click)="closeConfirmation()">
+      <div class="confirmation-popup" (click)="$event.stopPropagation()">
+        <div class="confirmation-header">
+          <h3>✅ Upload Successful!</h3>
+          <button (click)="closeConfirmation()" class="close-btn">×</button>
+        </div>
+        <div class="confirmation-content">
+          <p><strong>Filename:</strong> {{ uploadResult.filename }}</p>
+          <p><strong>Chunks Created:</strong> {{ uploadResult.chunks_created }}</p>
+          <p><strong>Processing Time:</strong> {{ uploadResult.processing_time_ms }}ms</p>
+          <p class="confirmation-message">
+            Your PDF has been successfully ingested and is now available for RAG queries.
+          </p>
+        </div>
+        <div class="confirmation-actions">
+          <button (click)="closeConfirmation()" class="confirm-btn">OK</button>
+          <a routerLink="/" class="go-to-chat-btn">Go to Chat</a>
+        </div>
+      </div>
+    </div>
+  }
+</div>

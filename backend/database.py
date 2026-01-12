@@ -99,6 +99,25 @@ def create_tables():
             CREATE INDEX IF NOT EXISTS idx_filename ON pdf_chunks(filename);
         """)
         
+        # Create pdf_documents table to store PDF metadata
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pdf_documents (
+                id SERIAL PRIMARY KEY,
+                filename VARCHAR(255) NOT NULL UNIQUE,
+                display_name VARCHAR(255),
+                description TEXT,
+                options JSONB,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                chunk_count INTEGER DEFAULT 0
+            );
+        """)
+        
+        # Create index on filename for faster lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_pdf_documents_filename ON pdf_documents(filename);
+        """)
+        
         conn.commit()
         print("Database tables created successfully!")
         
@@ -106,6 +125,124 @@ def create_tables():
         conn.rollback()
         print(f"Error creating tables: {e}")
         raise
+    finally:
+        cursor.close()
+        conn.close()
+
+def insert_or_update_pdf_document(filename: str, chunk_count: int, display_name: str = None, description: str = None, options: dict = None):
+    """
+    Insert or update PDF document metadata
+    
+    Args:
+        filename: PDF filename
+        chunk_count: Number of chunks for this PDF
+        display_name: Optional display name
+        description: Optional description
+        options: Optional JSON options
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        import json
+        options_json = json.dumps(options) if options else None
+        
+        # Use INSERT ... ON CONFLICT to update if exists
+        cursor.execute("""
+            INSERT INTO pdf_documents (filename, display_name, description, options, chunk_count, updated_at)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (filename) 
+            DO UPDATE SET 
+                chunk_count = EXCLUDED.chunk_count,
+                updated_at = CURRENT_TIMESTAMP,
+                display_name = COALESCE(EXCLUDED.display_name, pdf_documents.display_name),
+                description = COALESCE(EXCLUDED.description, pdf_documents.description),
+                options = COALESCE(EXCLUDED.options, pdf_documents.options)
+        """, (filename, display_name, description, options_json, chunk_count))
+        
+        conn.commit()
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Error inserting/updating PDF document: {e}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_all_pdf_documents():
+    """
+    Get all PDF documents with their metadata
+    
+    Returns:
+        List of dictionaries with PDF document information
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT filename, display_name, description, options, uploaded_at, chunk_count
+            FROM pdf_documents
+            ORDER BY uploaded_at DESC
+        """)
+        
+        results = cursor.fetchall()
+        pdfs = []
+        
+        for row in results:
+            import json
+            pdfs.append({
+                'filename': row[0],
+                'display_name': row[1] or row[0],  # Use filename if display_name is None
+                'description': row[2],
+                'options': json.loads(row[3]) if row[3] else {},
+                'uploaded_at': row[4].isoformat() if row[4] else None,
+                'chunk_count': row[5] or 0
+            })
+        
+        return pdfs
+    except psycopg2.Error as e:
+        print(f"Error fetching PDF documents: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+def insert_chunks(chunks_data):
+    """
+    Get all PDF documents with their metadata
+    
+    Returns:
+        List of dictionaries with PDF document information
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT filename, display_name, description, options, uploaded_at, chunk_count
+            FROM pdf_documents
+            ORDER BY uploaded_at DESC
+        """)
+        
+        results = cursor.fetchall()
+        pdfs = []
+        
+        for row in results:
+            import json
+            pdfs.append({
+                'filename': row[0],
+                'display_name': row[1] or row[0],  # Use filename if display_name is None
+                'description': row[2],
+                'options': json.loads(row[3]) if row[3] else {},
+                'uploaded_at': row[4].isoformat() if row[4] else None,
+                'chunk_count': row[5] or 0
+            })
+        
+        return pdfs
+    except psycopg2.Error as e:
+        print(f"Error fetching PDF documents: {e}")
+        return []
     finally:
         cursor.close()
         conn.close()
@@ -175,6 +312,18 @@ def insert_chunks(chunks_data):
         
         conn.commit()
         print(f"Successfully inserted {inserted_count}/{len(chunks_data)} chunks into database")
+        
+        # Update PDF document metadata
+        if chunks_data:
+            # Get unique filenames and their chunk counts
+            from collections import Counter
+            filename_counts = Counter(chunk['filename'] for chunk in chunks_data)
+            
+            for filename, count in filename_counts.items():
+                try:
+                    insert_or_update_pdf_document(filename, count)
+                except Exception as e:
+                    print(f"Warning: Could not update PDF document metadata for {filename}: {e}")
         
     except psycopg2.Error as e:
         conn.rollback()

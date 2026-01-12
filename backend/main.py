@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -7,7 +8,11 @@ import time
 import uuid
 from openai import OpenAI
 from typing import Optional, List, Dict, Any
-from database import search_similar_chunks, get_db_connection, search_keywords_fulltext
+from database import search_similar_chunks, get_db_connection, search_keywords_fulltext, get_all_pdf_documents, insert_or_update_pdf_document
+from pdf_processor import process_pdf_to_chunks
+from ingest_pdf import get_embeddings
+import tempfile
+import shutil
 from reranking import rerank_chunks
 from hybrid_search import hybrid_search, search_with_metadata_filter
 from query_expansion import expand_query, expand_and_search
@@ -646,6 +651,157 @@ async def chat(request: ChatRequest):
             error=e
         )
         raise HTTPException(status_code=500, detail=f"Error calling OpenAI API: {str(e)}")
+
+@app.get("/api/pdfs")
+async def get_pdfs():
+    """
+    Get list of all available PDF documents with metadata from pdf_documents table
+    """
+    try:
+        pdf_documents = get_all_pdf_documents()
+        
+        # Return both simple list and detailed info
+        return {
+            "pdfs": [pdf['filename'] for pdf in pdf_documents],
+            "pdf_documents": pdf_documents
+        }
+    except Exception as e:
+        logger.error("get_pdfs_error", error=e)
+        # Fallback to old method if pdf_documents table doesn't exist
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query = "SELECT DISTINCT filename FROM pdf_chunks ORDER BY filename"
+            cursor.execute(query)
+            results = cursor.fetchall()
+            
+            pdfs = [row[0] for row in results]
+            
+            cursor.close()
+            conn.close()
+            
+            return {"pdfs": pdfs, "pdf_documents": []}
+        except Exception as fallback_error:
+            logger.error("get_pdfs_fallback_error", error=fallback_error)
+            raise HTTPException(status_code=500, detail=f"Error fetching PDFs: {str(fallback_error)}")
+
+@app.post("/api/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    """
+    Upload and ingest a PDF file
+    
+    Note: This endpoint may take several minutes for large PDFs due to:
+    - PDF text extraction and chunking
+    - Embedding generation (one API call per chunk)
+    - Database insertion
+    """
+    """
+    Upload and ingest a PDF file
+    """
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    
+    try:
+        # Validate file type
+        if not file.filename.endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            shutil.copyfileobj(file.file, tmp_file)
+            tmp_path = tmp_file.name
+        
+        try:
+            logger.info(
+                "pdf_upload_started",
+                request_id=request_id,
+                filename=file.filename
+            )
+            
+            # Process PDF to chunks
+            logger.info(f"Processing PDF: {file.filename}")
+            chunks = process_pdf_to_chunks(
+                tmp_path,
+                chunk_method="tokens",
+                chunk_size=500,
+                overlap=50,
+                use_contextual_chunking=False
+            )
+            
+            if not chunks:
+                raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
+            
+            logger.info(f"Created {len(chunks)} chunks. Generating embeddings...")
+            
+            # Generate embeddings
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+            
+            # This can take a while - one API call per chunk
+            chunks_with_embeddings = get_embeddings(chunks, api_key)
+            
+            logger.info(f"Generated embeddings for {len(chunks_with_embeddings)} chunks. Storing in database...")
+            
+            if not chunks_with_embeddings:
+                raise HTTPException(status_code=500, detail="Failed to generate embeddings")
+            
+            # Store in database
+            from database import insert_chunks
+            insert_chunks(chunks_with_embeddings)
+            
+            # Update PDF document metadata (this is also done in insert_chunks, but we do it here for immediate update)
+            insert_or_update_pdf_document(
+                filename=file.filename,
+                chunk_count=len(chunks_with_embeddings),
+                display_name=file.filename,  # Can be customized later
+                description=None,
+                options=None
+            )
+            
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            logger.info(
+                "pdf_upload_success",
+                request_id=request_id,
+                filename=file.filename,
+                chunks_created=len(chunks_with_embeddings),
+                processing_time_ms=processing_time_ms
+            )
+            
+            response_data = {
+                "message": "PDF uploaded and ingested successfully",
+                "filename": file.filename,
+                "chunks_created": len(chunks_with_embeddings),
+                "processing_time_ms": round(processing_time_ms, 2)
+            }
+            
+            # Return as regular JSON response (not JSONResponse wrapper)
+            # This ensures proper handling in Angular HttpClient
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=200,
+                content=response_data
+            )
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time_ms = (time.time() - start_time) * 1000
+        logger.error(
+            "pdf_upload_error",
+            request_id=request_id,
+            filename=file.filename if file else "unknown",
+            processing_time_ms=processing_time_ms,
+            error=e
+        )
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
