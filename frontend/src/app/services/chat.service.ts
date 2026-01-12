@@ -22,6 +22,15 @@ export interface ChatRequest {
   use_rag?: boolean;
   filename?: string;
   use_functions?: boolean;
+  use_reranking?: boolean;
+  rerank_strategy?: string;
+  prompt_strategy?: string;
+  use_hybrid_search?: boolean;
+  vector_weight?: number;
+  keyword_weight?: number;
+  use_query_expansion?: boolean;
+  detect_hallucinations?: boolean;
+  use_llm_verification?: boolean;
 }
 
 export interface ChatResponse {
@@ -43,15 +52,28 @@ export class ChatService {
     model: string = 'gpt-3.5-turbo',
     useRag: boolean = true,
     filename?: string,
-    useFunctions: boolean = false
+    useFunctions: boolean = false,
+    options?: {
+      use_reranking?: boolean;
+      rerank_strategy?: string;
+      prompt_strategy?: string;
+      use_hybrid_search?: boolean;
+      vector_weight?: number;
+      keyword_weight?: number;
+      use_query_expansion?: boolean;
+      detect_hallucinations?: boolean;
+      use_llm_verification?: boolean;
+    }
   ): Observable<ChatResponse> {
-    return this.http.post<ChatResponse>(`${this.apiUrl}/chat`, {
+    const request: ChatRequest = {
       message,
       model,
       use_rag: useRag,
       filename: filename,
-      use_functions: useFunctions
-    } as ChatRequest);
+      use_functions: useFunctions,
+      ...options
+    };
+    return this.http.post<ChatResponse>(`${this.apiUrl}/chat`, request);
   }
 }
 

@@ -27,7 +27,35 @@ export class ChatComponent {
   // Feature toggles
   useRag = signal(true);
   useFunctions = signal(false);
-  selectedFilename = signal<string | undefined>(undefined);
+  filenameFilter = '';
+  
+  // Advanced options
+  showAdvancedOptions = signal(false);
+  useReranking = true;
+  rerankStrategy = 'combined';
+  promptStrategy: string | undefined = undefined;
+  useHybridSearch = false;
+  vectorWeight = 0.7;
+  keywordWeight = 0.3;
+  useQueryExpansion = false;
+  detectHallucinations = false;
+  useLlmVerification = false;
+  
+  // Source expansion state
+  expandedSources = new Set<number>();
+  
+  // Reranking strategies
+  rerankStrategies = ['combined', 'threshold', 'keyword', 'diversity', 'length'];
+  
+  // Prompt strategies
+  promptStrategies = [
+    { value: undefined, label: 'Auto-select' },
+    { value: 'strict', label: 'Strict' },
+    { value: 'conversational', label: 'Conversational' },
+    { value: 'technical', label: 'Technical' },
+    { value: 'summarize', label: 'Summarize' },
+    { value: 'qna', label: 'Q&A' }
+  ];
 
   constructor(private chatService: ChatService) {
     // Add welcome message
@@ -61,8 +89,19 @@ export class ChatComponent {
       message,
       'gpt-3.5-turbo',
       this.useRag(),
-      this.selectedFilename(),
-      this.useFunctions()
+      this.filenameFilter.trim() || undefined,
+      this.useFunctions(),
+      {
+        use_reranking: this.useReranking,
+        rerank_strategy: this.rerankStrategy,
+        prompt_strategy: this.promptStrategy,
+        use_hybrid_search: this.useHybridSearch,
+        vector_weight: this.vectorWeight,
+        keyword_weight: this.keywordWeight,
+        use_query_expansion: this.useQueryExpansion,
+        detect_hallucinations: this.detectHallucinations,
+        use_llm_verification: this.useLlmVerification
+      }
     ).subscribe({
       next: (response) => {
         this.messages.update(msgs => [...msgs, {
@@ -94,6 +133,42 @@ export class ChatComponent {
 
   toggleFunctions() {
     this.useFunctions.update(value => !value);
+  }
+
+  onFilenameChange(value: string) {
+    this.filenameFilter = value;
+  }
+
+  clearFilenameFilter() {
+    this.filenameFilter = '';
+  }
+
+  toggleSourcePreview(chunkIndex: number) {
+    if (this.expandedSources.has(chunkIndex)) {
+      this.expandedSources.delete(chunkIndex);
+    } else {
+      this.expandedSources.add(chunkIndex);
+    }
+  }
+
+  isSourceExpanded(chunkIndex: number): boolean {
+    return this.expandedSources.has(chunkIndex);
+  }
+
+  toggleAdvancedOptions() {
+    this.showAdvancedOptions.update(value => !value);
+  }
+
+  updateVectorWeight(value: string) {
+    const numValue = parseFloat(value);
+    this.vectorWeight = numValue;
+    this.keywordWeight = 1 - numValue;
+  }
+
+  updateKeywordWeight(value: string) {
+    const numValue = parseFloat(value);
+    this.keywordWeight = numValue;
+    this.vectorWeight = 1 - numValue;
   }
 }
 
