@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: ai-learning-db
+    environment:
+      POSTGRES_USER: ai_learning_user
+      POSTGRES_PASSWORD: BRVkO1CKiX9kB1vfxcKF5kRR
+      POSTGRES_DB: ai_learning
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_learning_user -d ai_learning"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

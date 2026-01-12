@@ -1,0 +1,1013 @@
+{
+	"info": {
+		"_postman_id": "ai-learning-api-collection",
+		"name": "AI Learning API",
+		"description": "Complete API collection for AI Learning Backend with RAG, Function Calling, and Advanced Features",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "ai-learning"
+	},
+	"item": [
+		{
+			"name": "Basic Endpoints",
+			"item": [
+				{
+					"name": "Root Endpoint",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								""
+							]
+						},
+						"description": "Root endpoint to check if API is running"
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Health check endpoint"
+					},
+					"response": []
+				}
+			],
+			"description": "Basic API endpoints"
+		},
+		{
+			"name": "Chat API - Basic",
+			"item": [
+				{
+					"name": "Simple Chat (No RAG)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Hello! What is artificial intelligence?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Basic chat without RAG"
+					},
+					"response": []
+				},
+				{
+					"name": "Chat with RAG",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is artificial intelligence?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Chat with RAG enabled - retrieves context from ingested PDFs"
+					},
+					"response": []
+				},
+				{
+					"name": "Chat with RAG - Filter by Filename",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What does the document say about machine learning?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"filename\": \"example_ai_learning.pdf\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Chat with RAG, filtering results by specific PDF filename"
+					},
+					"response": []
+				}
+			],
+			"description": "Basic chat API endpoints"
+		},
+		{
+			"name": "Chat API - Function Calling",
+			"item": [
+				{
+					"name": "Calculate Function",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is 15 * 23?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": false,\n    \"use_functions\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Test calculate function"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Time",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What time is it now?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": false,\n    \"use_functions\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Test get_current_time function"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Weather Function",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is the weather in San Francisco?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": false,\n    \"use_functions\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Test get_weather function (mock)"
+					},
+					"response": []
+				},
+				{
+					"name": "RAG + Function Calling",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Based on the documents, what is AI? Also calculate 10 + 20.\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_functions\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Combine RAG and function calling"
+					},
+					"response": []
+				}
+			],
+			"description": "Function calling endpoints"
+		},
+		{
+			"name": "Chat API - Advanced RAG",
+			"item": [
+				{
+					"name": "Hybrid Search",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is machine learning?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_hybrid_search\": true,\n    \"vector_weight\": 0.7,\n    \"keyword_weight\": 0.3\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use hybrid search combining vector similarity and keyword matching"
+					},
+					"response": []
+				},
+				{
+					"name": "Query Expansion",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_query_expansion\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Enable query expansion to generate query variations"
+					},
+					"response": []
+				},
+				{
+					"name": "Reranking - Combined Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Explain neural networks\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_reranking\": true,\n    \"rerank_strategy\": \"combined\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use combined reranking strategy (default)"
+					},
+					"response": []
+				},
+				{
+					"name": "Reranking - Threshold Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is deep learning?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_reranking\": true,\n    \"rerank_strategy\": \"threshold\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use threshold-based reranking"
+					},
+					"response": []
+				},
+				{
+					"name": "Reranking - Keyword Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Explain transformers in AI\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_reranking\": true,\n    \"rerank_strategy\": \"keyword\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use keyword-based reranking"
+					},
+					"response": []
+				},
+				{
+					"name": "Reranking - Diversity Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What are the main AI concepts?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_reranking\": true,\n    \"rerank_strategy\": \"diversity\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use diversity-based reranking for varied results"
+					},
+					"response": []
+				},
+				{
+					"name": "All Advanced Features",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is artificial intelligence and how does it work?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"use_hybrid_search\": true,\n    \"vector_weight\": 0.7,\n    \"keyword_weight\": 0.3,\n    \"use_query_expansion\": true,\n    \"use_reranking\": true,\n    \"rerank_strategy\": \"combined\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Enable all advanced RAG features together"
+					},
+					"response": []
+				}
+			],
+			"description": "Advanced RAG features"
+		},
+		{
+			"name": "Chat API - Prompt Strategies",
+			"item": [
+				{
+					"name": "Strict Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"strict\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use strict prompt strategy - only use provided context"
+					},
+					"response": []
+				},
+				{
+					"name": "Conversational Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Tell me about AI\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"conversational\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use conversational prompt strategy"
+					},
+					"response": []
+				},
+				{
+					"name": "Technical Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Explain the technical details of neural networks\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"technical\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use technical prompt strategy for detailed explanations"
+					},
+					"response": []
+				},
+				{
+					"name": "Q&A Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is the difference between AI and ML?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"qna\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use Q&A prompt strategy"
+					},
+					"response": []
+				},
+				{
+					"name": "Summarize Strategy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Summarize the key points about AI\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"summarize\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use summarize prompt strategy"
+					},
+					"response": []
+				},
+				{
+					"name": "Default Preset",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"default\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use default preset strategy"
+					},
+					"response": []
+				},
+				{
+					"name": "Accurate Preset",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"prompt_strategy\": \"accurate\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use accurate preset strategy"
+					},
+					"response": []
+				}
+			],
+			"description": "Different prompt strategies"
+		},
+		{
+			"name": "Chat API - Hallucination Detection",
+			"item": [
+				{
+					"name": "With Hallucination Detection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"detect_hallucinations\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Enable hallucination detection"
+					},
+					"response": []
+				},
+				{
+					"name": "With LLM Verification",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"What is AI?\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": true,\n    \"detect_hallucinations\": true,\n    \"use_llm_verification\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Enable hallucination detection with LLM verification (more accurate)"
+					},
+					"response": []
+				}
+			],
+			"description": "Hallucination detection features"
+		},
+		{
+			"name": "Chat API - Different Models",
+			"item": [
+				{
+					"name": "GPT-3.5 Turbo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Explain quantum computing\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"use_rag\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use GPT-3.5 Turbo model"
+					},
+					"response": []
+				},
+				{
+					"name": "GPT-4",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Explain quantum computing in detail\",\n    \"model\": \"gpt-4\",\n    \"use_rag\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Use GPT-4 model (requires access)"
+					},
+					"response": []
+				}
+			],
+			"description": "Test different OpenAI models"
+		},
+		{
+			"name": "Error Testing",
+			"item": [
+				{
+					"name": "Missing Message Field",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"model\": \"gpt-3.5-turbo\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Test error handling - missing required message field"
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid JSON",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"message\": \"Hello\",\n    \"invalid\": json\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/chat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"chat"
+							]
+						},
+						"description": "Test error handling - invalid JSON"
+					},
+					"response": []
+				}
+			],
+			"description": "Error handling tests"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		}
+	]
+}
