@@ -8,16 +8,16 @@ import time
 import uuid
 from openai import OpenAI
 from typing import Optional, List, Dict, Any
-from database import search_similar_chunks, get_db_connection, search_keywords_fulltext, get_all_pdf_documents, insert_or_update_pdf_document
+from database import search_similar_chunks, get_db_connection, get_all_pdf_documents, insert_or_update_pdf_document
 from pdf_processor import process_pdf_to_chunks
 from ingest_pdf import get_embeddings
 import tempfile
 import shutil
 from reranking import rerank_chunks
-from hybrid_search import hybrid_search, search_with_metadata_filter
-from query_expansion import expand_query, expand_and_search
+from hybrid_search import hybrid_search
+from query_expansion import expand_query
 from utils.logger import get_logger, calculate_token_cost
-from utils.error_handling import retry_with_backoff, CircuitBreaker, FallbackStrategy, graceful_degradation
+from utils.error_handling import retry_with_backoff, CircuitBreaker
 from utils.hallucination_detection import detect_hallucinations
 from prompts.templates import build_rag_prompt, PromptStrategy
 from prompts.strategies import select_strategy, get_strategy_from_preset
@@ -696,9 +696,6 @@ async def upload_pdf(file: UploadFile = File(...)):
     - Embedding generation (one API call per chunk)
     - Database insertion
     """
-    """
-    Upload and ingest a PDF file
-    """
     request_id = str(uuid.uuid4())
     start_time = time.time()
     
@@ -779,7 +776,6 @@ async def upload_pdf(file: UploadFile = File(...)):
             
             # Return as regular JSON response (not JSONResponse wrapper)
             # This ensures proper handling in Angular HttpClient
-            from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=200,
                 content=response_data
