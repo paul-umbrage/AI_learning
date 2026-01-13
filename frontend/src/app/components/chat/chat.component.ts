@@ -36,6 +36,7 @@ export class ChatComponent implements OnInit, OnDestroy {
   availablePdfs: string[] = [];
   selectedPdf: string = '';
   isLoadingPdfs = false;
+  selectedModel = 'gpt-3.5-turbo';
 
   // Advanced options
   showAdvancedOptions = signal(false);
@@ -65,13 +66,30 @@ export class ChatComponent implements OnInit, OnDestroy {
     { value: 'qna', label: 'Q&A' }
   ];
 
+  // Available models
+  availableModels = [
+    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+    { value: 'gpt-4', label: 'GPT-4' },
+    { value: 'gpt-4-turbo-preview', label: 'GPT-4 Turbo' },
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' }
+  ];
+
+  // Copy feedback state
+  copiedMessageIndex: number | null = null;
+
   constructor(private chatService: ChatService, private router: Router) {
-    // Add welcome message
-    this.messages.set([{
-      text: 'Hello! I\'m your AI assistant. How can I help you today?',
-      isUser: false,
-      timestamp: new Date()
-    }]);
+    // Load chat history from localStorage
+    this.loadChatHistory();
+    
+    // If no history, add welcome message
+    if (this.messages().length === 0) {
+      this.messages.set([{
+        text: 'Hello! I\'m your AI assistant. How can I help you today?',
+        isUser: false,
+        timestamp: new Date()
+      }]);
+    }
   }
 
   ngOnInit() {
@@ -141,10 +159,13 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     this.error.set(null);
 
+    // Save to localStorage before sending
+    this.saveChatHistory();
+
     // Send to backend
     this.chatService.sendMessage(
       message,
-      'gpt-3.5-turbo',
+      this.selectedModel,
       this.useRag(),
       this.filenameFilter.trim() || undefined,
       this.useFunctions(),
@@ -161,14 +182,24 @@ export class ChatComponent implements OnInit, OnDestroy {
       }
     ).subscribe({
       next: (response) => {
+        // Debug: Log the response to see what we're receiving
+        console.log('Chat response received:', {
+          response: response.response?.substring(0, 100),
+          sources: response.sources,
+          sourcesLength: response.sources?.length,
+          functionCalls: response.function_calls
+        });
+        
         this.messages.update(msgs => [...msgs, {
           text: response.response,
           isUser: false,
           timestamp: new Date(),
-          sources: response.sources,
-          functionCalls: response.function_calls
+          sources: response.sources || [],
+          functionCalls: response.function_calls || []
         }]);
         this.isLoading.set(false);
+        // Save chat history after receiving response
+        this.saveChatHistory();
       },
       error: (err) => {
         this.error.set(err.error?.detail || 'Failed to get response from AI');
@@ -231,6 +262,82 @@ export class ChatComponent implements OnInit, OnDestroy {
     const numValue = parseFloat(value);
     this.keywordWeight = numValue;
     this.vectorWeight = 1 - numValue;
+  }
+
+  clearChat() {
+    if (confirm('Are you sure you want to clear the chat history?')) {
+      this.messages.set([{
+        text: 'Hello! I\'m your AI assistant. How can I help you today?',
+        isUser: false,
+        timestamp: new Date()
+      }]);
+      this.expandedSources.clear();
+      this.error.set(null);
+      this.saveChatHistory();
+    }
+  }
+
+  copyMessage(messageText: string, index: number) {
+    navigator.clipboard.writeText(messageText).then(() => {
+      this.copiedMessageIndex = index;
+      setTimeout(() => {
+        this.copiedMessageIndex = null;
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy message:', err);
+    });
+  }
+
+  isMessageCopied(index: number): boolean {
+    return this.copiedMessageIndex === index;
+  }
+
+  private saveChatHistory() {
+    try {
+      const messagesToSave = this.messages().map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp.toISOString()
+      }));
+      localStorage.setItem('chatHistory', JSON.stringify(messagesToSave));
+      localStorage.setItem('chatSettings', JSON.stringify({
+        selectedModel: this.selectedModel,
+        useRag: this.useRag(),
+        useFunctions: this.useFunctions(),
+        filenameFilter: this.filenameFilter
+      }));
+    } catch (err) {
+      console.error('Failed to save chat history:', err);
+    }
+  }
+
+  private loadChatHistory() {
+    try {
+      const savedHistory = localStorage.getItem('chatHistory');
+      if (savedHistory) {
+        const messages = JSON.parse(savedHistory).map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        this.messages.set(messages);
+      }
+
+      const savedSettings = localStorage.getItem('chatSettings');
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        this.selectedModel = settings.selectedModel || 'gpt-3.5-turbo';
+        if (settings.useRag !== undefined) {
+          this.useRag.set(settings.useRag);
+        }
+        if (settings.useFunctions !== undefined) {
+          this.useFunctions.set(settings.useFunctions);
+        }
+        if (settings.filenameFilter) {
+          this.filenameFilter = settings.filenameFilter;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load chat history:', err);
+    }
   }
 }
 

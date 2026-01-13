@@ -6,6 +6,16 @@
     </div>
 
     <div class="sidebar-content">
+      <!-- Model Selection -->
+      <div class="sidebar-section">
+        <h4 class="section-title">Model</h4>
+        <select [(ngModel)]="selectedModel" class="model-select">
+          @for (model of availableModels; track model.value) {
+            <option [value]="model.value">{{ model.label }}</option>
+          }
+        </select>
+      </div>
+
       <!-- Feature Toggles -->
       <div class="sidebar-section">
         <h4 class="section-title">Features</h4>
@@ -159,15 +169,47 @@
   <!-- Right Side - Chat Interface -->
   <div class="chat-container">
     <div class="chat-header">
-      <h2>AI Chat Assistant</h2>
-      <p class="subtitle">Powered by OpenAI with RAG & Function Calling</p>
+      <div class="header-content">
+        <div>
+          <h2>AI Chat Assistant</h2>
+          <p class="subtitle">Powered by OpenAI with RAG & Function Calling</p>
+        </div>
+        <button (click)="clearChat()" class="clear-chat-btn" title="Clear chat history">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Clear Chat
+        </button>
+      </div>
     </div>
 
     <div class="messages-container">
     @for (message of messages(); track $index) {
       <div class="message" [class.user-message]="message.isUser" [class.ai-message]="!message.isUser">
         <div class="message-content">
-          <div class="message-text">{{ message.text }}</div>
+          <div class="message-header">
+            <div class="message-text">{{ message.text }}</div>
+            <button 
+              (click)="copyMessage(message.text, $index)" 
+              class="copy-btn"
+              [class.copied]="isMessageCopied($index)"
+              [title]="isMessageCopied($index) ? 'Copied!' : 'Copy message'"
+            >
+              @if (isMessageCopied($index)) {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>Copied!</span>
+              } @else {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy</span>
+              }
+            </button>
+          </div>
 
           <!-- RAG Sources -->
           @if (message.sources && message.sources.length > 0) {

@@ -15,4 +15,6 @@ tiktoken==0.5.2
 numpy==1.24.3
 # PDF generation (for example PDF)
 reportlab==4.0.7
+# Redis caching
+redis==5.0.1
 

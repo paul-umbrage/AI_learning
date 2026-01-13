@@ -21,6 +21,13 @@ from utils.error_handling import retry_with_backoff, CircuitBreaker
 from utils.hallucination_detection import detect_hallucinations
 from prompts.templates import build_rag_prompt, PromptStrategy
 from prompts.strategies import select_strategy, get_strategy_from_preset
+from redis_cache import (
+    get_cached_query_embedding, cache_query_embedding,
+    get_cached_query_expansion, cache_query_expansion,
+    get_cached_pdf_list, cache_pdf_list, invalidate_pdf_cache,
+    get_cached_search_results, cache_search_results,
+    get_cache_stats
+)
 
 # Load environment variables
 load_dotenv()
@@ -80,7 +87,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    sources: Optional[List[Dict[str, Any]]] = None  # RAG sources with citations
+    sources: Optional[List[Dict[str, Any]]] = []  # RAG sources with citations (default to empty list)
     function_calls: Optional[List[Dict[str, Any]]] = None  # Function calls made
     hallucination_detection: Optional[Dict[str, Any]] = None  # Hallucination detection results
     query_variations: Optional[List[str]] = None  # Query variations used (if expansion enabled)
@@ -93,11 +100,28 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/api/cache/stats")
+async def get_cache_stats_endpoint():
+    """
+    Get Redis cache statistics
+    """
+    return get_cache_stats()
+
 @retry_with_backoff(max_retries=3, initial_delay=1.0, exceptions=(Exception,))
 def get_query_embedding(query: str, request_id: str = "unknown") -> list:
-    """Generate embedding for a query string with retry logic"""
+    """Generate embedding for a query string with retry logic and Redis caching"""
     if not client:
         return None
+    
+    # Try to get from cache first
+    cached_embedding = get_cached_query_embedding(query)
+    if cached_embedding is not None:
+        logger.info(
+            "embedding_cache_hit",
+            request_id=request_id,
+            query_preview=query[:100]
+        )
+        return cached_embedding
     
     start_time = time.time()
     try:
@@ -112,13 +136,17 @@ def get_query_embedding(query: str, request_id: str = "unknown") -> list:
         embedding = response.data[0].embedding
         duration_ms = (time.time() - start_time) * 1000
         
+        # Cache the embedding (24 hour TTL)
+        cache_query_embedding(query, embedding, ttl=86400)
+        
         # Log embedding generation
         logger.log_embedding_generation(
             request_id=request_id,
             query=query,
             model="text-embedding-ada-002",
             duration_ms=duration_ms,
-            embedding_dim=len(embedding)
+            embedding_dim=len(embedding),
+            cached=False
         )
         
         return embedding
@@ -162,15 +190,29 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
     # Query expansion if enabled
     if use_query_expansion and client:
         try:
-            variations = expand_query(query, num_variations=2, client=client)
-            query_variations = variations
-            logger.info(
-                "query_expansion",
-                request_id=request_id,
-                original_query=query,
-                variations=variations,
-                num_variations=len(variations)
-            )
+            # Try to get from cache first
+            cached_variations = get_cached_query_expansion(query)
+            if cached_variations is not None:
+                query_variations = cached_variations
+                logger.info(
+                    "query_expansion_cache_hit",
+                    request_id=request_id,
+                    original_query=query,
+                    variations=query_variations,
+                    num_variations=len(query_variations)
+                )
+            else:
+                variations = expand_query(query, num_variations=2, client=client)
+                query_variations = variations
+                # Cache the variations (1 hour TTL)
+                cache_query_expansion(query, variations, ttl=3600)
+                logger.info(
+                    "query_expansion",
+                    request_id=request_id,
+                    original_query=query,
+                    variations=variations,
+                    num_variations=len(variations)
+                )
         except Exception as e:
             logger.warning(
                 "query_expansion_failed",
@@ -179,6 +221,30 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                 error=str(e)
             )
             # Continue with original query if expansion fails
+    
+    # Check cache for final search results (cache key includes all parameters)
+    # Note: We cache after all processing (hybrid search + reranking) for maximum benefit
+    cache_key_params = {
+        'query': query,
+        'filename': filename,
+        'top_k': top_k,
+        'use_hybrid_search': use_hybrid_search,
+        'vector_weight': vector_weight,
+        'keyword_weight': keyword_weight,
+        'use_reranking': use_reranking,
+        'rerank_strategy': rerank_strategy
+    }
+    
+    # Try to get cached final results
+    cached_results = get_cached_search_results(
+        query=query,
+        filename=filename,
+        top_k=top_k
+    )
+    
+    # Note: We can't easily cache the full results with all parameters in the key
+    # So we'll cache at the vector search level instead (before hybrid/reranking)
+    # This still provides significant cost savings
     
     # Generate query embedding (use first query variation)
     primary_query = query_variations[0]
@@ -450,6 +516,14 @@ async def chat(request: ChatRequest):
                 use_query_expansion=request.use_query_expansion,
                 request_id=request_id
             )
+            # Log sources for debugging
+            logger.info(
+                "rag_sources_retrieved",
+                request_id=request_id,
+                num_sources=len(sources),
+                has_context=bool(context),
+                use_rag=True
+            )
             
             system_content, user_content = build_rag_prompt(
                 query=request.message,
@@ -458,6 +532,12 @@ async def chat(request: ChatRequest):
                 use_rag=True
             )
         else:
+            logger.info(
+                "rag_disabled",
+                request_id=request_id,
+                use_rag=False
+            )
+            
             system_content, user_content = build_rag_prompt(
                 query=request.message,
                 context="",
@@ -632,9 +712,22 @@ async def chat(request: ChatRequest):
             response_size=len(final_response)
         )
         
+        # Ensure sources is always a list
+        sources_list = sources if isinstance(sources, list) else []
+        
+        # Log final response structure for debugging
+        logger.info(
+            "chat_response_ready",
+            request_id=request_id,
+            response_length=len(final_response),
+            num_sources=len(sources_list),
+            num_function_calls=len(function_calls_made) if function_calls_made else 0,
+            use_rag=request.use_rag
+        )
+        
         return ChatResponse(
             response=final_response,
-            sources=sources if sources else None,
+            sources=sources_list,  # Always return a list, never None
             function_calls=function_calls_made if function_calls_made else None,
             hallucination_detection=hallucination_results,
             query_variations=query_variations if request.use_query_expansion else None
@@ -656,14 +749,29 @@ async def chat(request: ChatRequest):
 async def get_pdfs():
     """
     Get list of all available PDF documents with metadata from pdf_documents table
+    Uses Redis cache to reduce database queries
     """
     try:
+        # Try to get from cache first
+        cached_pdfs = get_cached_pdf_list()
+        if cached_pdfs is not None:
+            return {
+                "pdfs": [pdf['filename'] for pdf in cached_pdfs],
+                "pdf_documents": cached_pdfs,
+                "cached": True
+            }
+        
+        # Fetch from database
         pdf_documents = get_all_pdf_documents()
+        
+        # Cache the results (5 minute TTL)
+        cache_pdf_list(pdf_documents, ttl=300)
         
         # Return both simple list and detailed info
         return {
             "pdfs": [pdf['filename'] for pdf in pdf_documents],
-            "pdf_documents": pdf_documents
+            "pdf_documents": pdf_documents,
+            "cached": False
         }
     except Exception as e:
         logger.error("get_pdfs_error", error=e)
@@ -756,6 +864,9 @@ async def upload_pdf(file: UploadFile = File(...)):
                 description=None,
                 options=None
             )
+            
+            # Invalidate PDF cache since we added a new PDF
+            invalidate_pdf_cache()
             
             processing_time_ms = (time.time() - start_time) * 1000
             

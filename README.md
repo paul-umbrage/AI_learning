@@ -345,10 +345,9 @@ Visit `http://localhost:8000/docs` for interactive Swagger documentation where y
 ## 📚 Additional Documentation
 
 - **[QUICK_START.md](QUICK_START.md)** - 5-minute quick setup guide
-- **[COMPLETE_RUN_GUIDE.md](COMPLETE_RUN_GUIDE.md)** - Detailed setup instructions
-- **[WEEK2_README.md](WEEK2_README.md)** - PDF processing and embeddings guide
-- **[WEEK3_4_IMPLEMENTATION.md](WEEK3_4_IMPLEMENTATION.md)** - RAG and function calling features
+- **[COMPLETE_ENVIRONMENT_SETUP.md](COMPLETE_ENVIRONMENT_SETUP.md)** - Complete environment setup instructions
 - **[PROJECT_EXPLANATION.md](PROJECT_EXPLANATION.md)** - Comprehensive project explanation
+- **[API_TESTING.md](API_TESTING.md)** - Testing APIs with payloads and responses
 
 ## 🧪 Testing
 
