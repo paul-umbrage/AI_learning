@@ -2,11 +2,13 @@
 Reranking utilities for improving retrieval quality.
 
 This module provides different reranking strategies to filter and reorder
-retrieved chunks based on relevance to the query.
+retrieved chunks based on relevance to the query. Enhanced for mixed-content
+documents with improved relevance scoring.
 """
 
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 import re
+import hashlib
 
 
 def rerank_by_similarity_threshold(
@@ -65,37 +67,146 @@ def rerank_by_keyword_overlap(
     return scored_results[:top_k]
 
 
+def detect_content_type(chunk_text: str) -> str:
+    """
+    Detect the type of content in a chunk (text, list, table, code, etc.).
+    
+    Args:
+        chunk_text: Chunk text to analyze
+    
+    Returns:
+        Content type: "text", "list", "table", "code", "mixed"
+    """
+    text_lower = chunk_text.lower()
+    
+    # Check for code-like content
+    code_indicators = ['def ', 'function', 'import ', 'class ', '{', '}', '()', '=>']
+    if any(indicator in text_lower for indicator in code_indicators):
+        return "code"
+    
+    # Check for list-like content
+    lines = chunk_text.strip().split('\n')
+    list_indicators = 0
+    for line in lines[:5]:  # Check first 5 lines
+        stripped = line.strip()
+        if stripped.startswith(('-', '*', '•', '1.', '2.', '3.')):
+            list_indicators += 1
+    
+    if list_indicators >= 2:
+        return "list"
+    
+    # Check for table-like content (multiple tabs or consistent spacing)
+    tab_count = sum(1 for line in lines[:5] if '\t' in line)
+    if tab_count >= 3:
+        return "table"
+    
+    # Check for mixed content
+    if list_indicators > 0 and len(lines) > 3:
+        return "mixed"
+    
+    return "text"
+
+
+def rerank_by_content_relevance(
+    query: str,
+    results: List[Tuple[str, str, int, float]],
+    top_k: int = 3
+) -> List[Tuple[str, str, int, float]]:
+    """
+    Rerank results by content type relevance for mixed-content documents.
+    
+    Boosts chunks that match the query's expected content type and have
+    better structure for answering the query.
+    
+    Args:
+        query: Original query string
+        results: List of (chunk_text, filename, page_number, similarity) tuples
+        top_k: Number of results to return
+    
+    Returns:
+        Reranked results with content-aware scoring
+    """
+    query_lower = query.lower()
+    
+    # Detect query type
+    is_definition_query = any(word in query_lower for word in ['what is', 'define', 'explain', 'meaning'])
+    is_list_query = any(word in query_lower for word in ['list', 'examples', 'types of', 'kinds of'])
+    is_howto_query = any(word in query_lower for word in ['how', 'steps', 'process', 'method'])
+    
+    scored_results = []
+    for chunk_text, filename, page_number, similarity in results:
+        content_type = detect_content_type(chunk_text)
+        content_score = 1.0
+        
+        # Boost content type based on query type
+        if is_list_query and content_type in ["list", "table"]:
+            content_score = 1.2
+        elif is_definition_query and content_type == "text":
+            content_score = 1.15
+        elif is_howto_query and content_type in ["list", "mixed"]:
+            content_score = 1.1
+        
+        # Penalize very short chunks (likely incomplete)
+        if len(chunk_text.strip()) < 30:
+            content_score *= 0.7
+        
+        # Boost chunks with good structure (paragraphs, complete sentences)
+        sentence_count = chunk_text.count('.') + chunk_text.count('!') + chunk_text.count('?')
+        if sentence_count >= 2:
+            content_score *= 1.05
+        
+        # Combine similarity with content score
+        final_score = similarity * content_score
+        scored_results.append((chunk_text, filename, page_number, final_score))
+    
+    # Sort by final score
+    scored_results.sort(key=lambda x: x[3], reverse=True)
+    return scored_results[:top_k]
+
+
 def rerank_by_diversity(
     results: List[Tuple[str, str, int, float]],
     top_k: int = 3,
-    max_per_page: int = 2
+    max_per_page: int = 2,
+    max_per_document: Optional[int] = None
 ) -> List[Tuple[str, str, int, float]]:
     """
     Rerank results to ensure diversity (different pages, different documents).
     
     Prevents returning too many chunks from the same page/document.
+    Enhanced for mixed-content documents.
     
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
         top_k: Number of results to return
         max_per_page: Maximum chunks per (filename, page) combination
+        max_per_document: Maximum chunks per document (None = no limit)
     
     Returns:
         Diversified results
     """
     selected = []
     page_counts: Dict[Tuple[str, int], int] = {}
+    doc_counts: Dict[str, int] = {}
     
     for result in results:
         chunk_text, filename, page_number, similarity = result
         page_key = (filename, page_number)
         
         # Count chunks from this page
-        current_count = page_counts.get(page_key, 0)
+        current_page_count = page_counts.get(page_key, 0)
         
-        if current_count < max_per_page:
+        # Count chunks from this document
+        current_doc_count = doc_counts.get(filename, 0)
+        
+        # Check limits
+        page_limit_ok = current_page_count < max_per_page
+        doc_limit_ok = max_per_document is None or current_doc_count < max_per_document
+        
+        if page_limit_ok and doc_limit_ok:
             selected.append(result)
-            page_counts[page_key] = current_count + 1
+            page_counts[page_key] = current_page_count + 1
+            doc_counts[filename] = current_doc_count + 1
             
             if len(selected) >= top_k:
                 break
@@ -192,17 +303,21 @@ def rerank_chunks(
         return filtered[:top_k]
     
     elif strategy == "combined":
-        # Apply multiple strategies in sequence
+        # Apply multiple strategies in sequence for mixed-content documents
         
         # 1. Length filtering
         filtered = rerank_by_length_penalty(filtered)
         
-        # 2. Keyword reranking
+        # 2. Content-aware reranking (for mixed-content documents)
+        filtered = rerank_by_content_relevance(query, filtered, top_k * 3)
+        
+        # 3. Keyword reranking
         filtered = rerank_by_keyword_overlap(query, filtered, top_k * 2)  # Get more for diversity
         
-        # 3. Diversity reranking
+        # 4. Diversity reranking (enhanced)
         max_per_page = kwargs.get("max_per_page", 2)
-        filtered = rerank_by_diversity(filtered, top_k, max_per_page)
+        max_per_document = kwargs.get("max_per_document", None)
+        filtered = rerank_by_diversity(filtered, top_k, max_per_page, max_per_document)
         
         return filtered
     

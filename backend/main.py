@@ -16,6 +16,7 @@ import shutil
 from reranking import rerank_chunks
 from hybrid_search import hybrid_search
 from query_expansion import expand_query
+from context_assembly import assemble_context, optimize_context_order, deduplicate_chunks
 from utils.logger import get_logger, calculate_token_cost
 from utils.error_handling import retry_with_backoff, CircuitBreaker
 from utils.hallucination_detection import detect_hallucinations
@@ -26,7 +27,8 @@ from redis_cache import (
     get_cached_query_expansion, cache_query_expansion,
     get_cached_pdf_list, cache_pdf_list, invalidate_pdf_cache,
     get_cached_search_results, cache_search_results,
-    get_cache_stats
+    get_cache_stats,
+    get_redis_cache
 )
 
 # Load environment variables
@@ -43,6 +45,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Configure rate limiting (after CORS, before routes)
+# Get Redis cache for rate limiting (optional, falls back to in-memory)
+from rate_limiting import RateLimitMiddleware, RateLimiter
+redis_cache = get_redis_cache()
+rate_limiter = RateLimiter(redis_cache=redis_cache)
+app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
 # Initialize OpenAI client
 api_key = os.getenv("OPENAI_API_KEY")
@@ -165,7 +174,7 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                      use_reranking: bool = True, rerank_strategy: str = "combined",
                      use_hybrid_search: bool = False, vector_weight: float = 0.7,
                      keyword_weight: float = 0.3, use_query_expansion: bool = False,
-                     request_id: str = "unknown") -> tuple:
+                     request_id: str = "unknown", model: str = "gpt-3.5-turbo") -> tuple:
     """
     Retrieve relevant context using RAG with optional reranking, hybrid search, and query expansion
     
@@ -185,7 +194,22 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
         tuple: (context_string, sources_list, query_variations)
     """
     start_time = time.time()
+    
+    # Edge case: Empty or very short query
+    if not query or len(query.strip()) < 2:
+        logger.warning(
+            "empty_query",
+            request_id=request_id,
+            query=query
+        )
+        return "", [], [query]
+    
+    # Normalize query
+    query = query.strip()
     query_variations = [query]  # Track query variations
+    
+    # Edge case: Validate top_k
+    top_k = max(1, min(top_k, 20))  # Clamp between 1 and 20
     
     # Query expansion if enabled
     if use_query_expansion and client:
@@ -302,23 +326,41 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
             # Just take top_k if no reranking
             results = results[:top_k]
         
-        # Build context string and sources
-        context_parts = []
-        sources = []
-        similarities = []
+        # Edge case: No results found
+        if not results:
+            logger.warning(
+                "no_results_found",
+                request_id=request_id,
+                query=query[:100],
+                filename=filename
+            )
+            return "", [], query_variations
         
-        for i, (chunk_text, chunk_filename, page_number, similarity) in enumerate(results, 1):
-            context_parts.append(f"[Context {i}]\n{chunk_text}\n")
-            sources.append({
-                "chunk_index": i,
-                "filename": chunk_filename,
-                "page_number": int(page_number),
-                "similarity": float(similarity),
-                "text_preview": chunk_text[:100] + "..." if len(chunk_text) > 100 else chunk_text
-            })
-            similarities.append(similarity)
+        # Optimize context order for better flow
+        results = optimize_context_order(results, query)
         
-        context = "\n".join(context_parts)
+        # Build context with smart assembly (deduplication + token management)
+        # Max tokens: ~2000 for context (leaving room for prompt and response)
+        context, sources, context_tokens = assemble_context(
+            results=results,
+            max_tokens=2000,
+            model=model,
+            deduplicate=True,
+            prioritize_high_similarity=True
+        )
+        
+        # Edge case: Empty context after assembly
+        if not context or not sources:
+            logger.warning(
+                "empty_context_after_assembly",
+                request_id=request_id,
+                query=query[:100],
+                results_count=len(results)
+            )
+            return "", [], query_variations
+        
+        # Extract similarities for logging
+        similarities = [s["similarity"] for s in sources]
         retrieval_time_ms = (time.time() - start_time) * 1000
         
         # Log retrieval
@@ -461,6 +503,24 @@ async def chat(request: ChatRequest):
     start_time = time.time()
     
     try:
+        # Edge case: Validate request
+        if not request.message or len(request.message.strip()) < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty"
+            )
+        
+        # Edge case: Validate model name
+        valid_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview", "gpt-4o", "gpt-4o-mini"]
+        if request.model not in valid_models:
+            logger.warning(
+                "invalid_model",
+                request_id=request_id,
+                model=request.model,
+                using_default="gpt-3.5-turbo"
+            )
+            request.model = "gpt-3.5-turbo"
+        
         # Log incoming request
         logger.log_request(
             method="POST",
@@ -514,7 +574,8 @@ async def chat(request: ChatRequest):
                 vector_weight=request.vector_weight,
                 keyword_weight=request.keyword_weight,
                 use_query_expansion=request.use_query_expansion,
-                request_id=request_id
+                request_id=request_id,
+                model=request.model
             )
             # Log sources for debugging
             logger.info(
