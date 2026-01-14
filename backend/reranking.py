@@ -36,8 +36,10 @@ def rerank_by_keyword_overlap(
     """
     Rerank results by keyword overlap with query.
     
-    This is a simple reranking strategy that boosts chunks containing
-    query keywords. Useful for combining semantic similarity with exact matches.
+    Enhanced version with:
+    - TF-IDF-like weighting for important keywords
+    - Position-based boosting (keywords at start of query are more important)
+    - Phrase matching bonus
     
     Args:
         query: Original query string
@@ -47,18 +49,50 @@ def rerank_by_keyword_overlap(
     Returns:
         Reranked results
     """
-    # Extract keywords from query (simple word-based)
-    query_words = set(re.findall(r'\b\w+\b', query.lower()))
+    # Extract keywords from query with position weighting
+    query_tokens = re.findall(r'\b\w+\b', query.lower())
+    query_words = set(query_tokens)
+    
+    # Weight keywords by position (earlier = more important)
+    keyword_weights = {}
+    for i, word in enumerate(query_tokens):
+        position_weight = 1.0 + (len(query_tokens) - i) * 0.1
+        keyword_weights[word] = keyword_weights.get(word, 0) + position_weight
+    
+    # Normalize weights
+    max_weight = max(keyword_weights.values()) if keyword_weights else 1.0
+    keyword_weights = {k: v / max_weight for k, v in keyword_weights.items()}
     
     scored_results = []
     for chunk_text, filename, page_number, similarity in results:
-        # Count keyword matches
-        chunk_words = set(re.findall(r'\b\w+\b', chunk_text.lower()))
-        keyword_overlap = len(query_words & chunk_words)
-        keyword_score = keyword_overlap / len(query_words) if query_words else 0
+        chunk_lower = chunk_text.lower()
+        chunk_words = set(re.findall(r'\b\w+\b', chunk_lower))
+        
+        # Calculate weighted keyword overlap
+        weighted_overlap = sum(
+            keyword_weights.get(word, 0.5) 
+            for word in query_words & chunk_words
+        )
+        keyword_score = weighted_overlap / len(query_words) if query_words else 0
+        
+        # Phrase matching bonus (exact phrase matches get boost)
+        phrase_bonus = 0.0
+        if len(query_tokens) >= 2:
+            # Check for 2-3 word phrases
+            for i in range(len(query_tokens) - 1):
+                phrase = ' '.join(query_tokens[i:i+2])
+                if phrase in chunk_lower:
+                    phrase_bonus += 0.1
+                if i < len(query_tokens) - 2:
+                    phrase3 = ' '.join(query_tokens[i:i+3])
+                    if phrase3 in chunk_lower:
+                        phrase_bonus += 0.15
+        
+        keyword_score = min(1.0, keyword_score + phrase_bonus)
         
         # Combine similarity score with keyword score (weighted)
-        combined_score = (similarity * 0.7) + (keyword_score * 0.3)
+        # Increased keyword weight for better precision
+        combined_score = (similarity * 0.65) + (keyword_score * 0.35)
         
         scored_results.append((chunk_text, filename, page_number, combined_score))
     
@@ -115,8 +149,10 @@ def rerank_by_content_relevance(
     """
     Rerank results by content type relevance for mixed-content documents.
     
-    Boosts chunks that match the query's expected content type and have
-    better structure for answering the query.
+    Enhanced version with:
+    - Better query type detection
+    - Semantic structure analysis
+    - Answer completeness scoring
     
     Args:
         query: Original query string
@@ -128,32 +164,61 @@ def rerank_by_content_relevance(
     """
     query_lower = query.lower()
     
-    # Detect query type
-    is_definition_query = any(word in query_lower for word in ['what is', 'define', 'explain', 'meaning'])
-    is_list_query = any(word in query_lower for word in ['list', 'examples', 'types of', 'kinds of'])
-    is_howto_query = any(word in query_lower for word in ['how', 'steps', 'process', 'method'])
+    # Enhanced query type detection
+    is_definition_query = any(phrase in query_lower for phrase in [
+        'what is', 'what are', 'define', 'explain', 'meaning', 'definition',
+        'what does', 'what do', 'describe'
+    ])
+    is_list_query = any(phrase in query_lower for phrase in [
+        'list', 'examples', 'types of', 'kinds of', 'categories', 'varieties',
+        'what are the', 'name the', 'enumerate'
+    ])
+    is_howto_query = any(phrase in query_lower for phrase in [
+        'how', 'steps', 'process', 'method', 'procedure', 'way to',
+        'how do you', 'how can', 'how to'
+    ])
+    is_comparison_query = any(phrase in query_lower for phrase in [
+        'compare', 'difference', 'versus', 'vs', 'better', 'worse',
+        'advantages', 'disadvantages'
+    ])
     
     scored_results = []
     for chunk_text, filename, page_number, similarity in results:
         content_type = detect_content_type(chunk_text)
         content_score = 1.0
         
-        # Boost content type based on query type
+        # Enhanced content type matching
         if is_list_query and content_type in ["list", "table"]:
-            content_score = 1.2
+            content_score = 1.25
         elif is_definition_query and content_type == "text":
-            content_score = 1.15
+            content_score = 1.2
         elif is_howto_query and content_type in ["list", "mixed"]:
+            content_score = 1.15
+        elif is_comparison_query and content_type in ["text", "mixed"]:
             content_score = 1.1
         
         # Penalize very short chunks (likely incomplete)
-        if len(chunk_text.strip()) < 30:
-            content_score *= 0.7
+        chunk_len = len(chunk_text.strip())
+        if chunk_len < 30:
+            content_score *= 0.6
+        elif chunk_len < 50:
+            content_score *= 0.85
         
         # Boost chunks with good structure (paragraphs, complete sentences)
         sentence_count = chunk_text.count('.') + chunk_text.count('!') + chunk_text.count('?')
-        if sentence_count >= 2:
+        if sentence_count >= 3:
+            content_score *= 1.1
+        elif sentence_count >= 2:
             content_score *= 1.05
+        
+        # Boost chunks that start with capital letters (likely complete sentences)
+        if chunk_text.strip() and chunk_text.strip()[0].isupper():
+            content_score *= 1.05
+        
+        # Penalize chunks that are mostly punctuation or whitespace
+        alphanumeric_ratio = sum(1 for c in chunk_text if c.isalnum()) / len(chunk_text) if chunk_text else 0
+        if alphanumeric_ratio < 0.5:
+            content_score *= 0.8
         
         # Combine similarity with content score
         final_score = similarity * content_score
@@ -304,20 +369,26 @@ def rerank_chunks(
     
     elif strategy == "combined":
         # Apply multiple strategies in sequence for mixed-content documents
+        # Enhanced pipeline for higher precision
         
-        # 1. Length filtering
-        filtered = rerank_by_length_penalty(filtered)
+        # 1. Length filtering (remove very short/long chunks early)
+        filtered = rerank_by_length_penalty(filtered, min_length=50, max_length=2000)
         
         # 2. Content-aware reranking (for mixed-content documents)
-        filtered = rerank_by_content_relevance(query, filtered, top_k * 3)
+        # Keep more candidates for next stages
+        filtered = rerank_by_content_relevance(query, filtered, top_k * 4)
         
-        # 3. Keyword reranking
-        filtered = rerank_by_keyword_overlap(query, filtered, top_k * 2)  # Get more for diversity
+        # 3. Keyword reranking with enhanced scoring
+        filtered = rerank_by_keyword_overlap(query, filtered, top_k * 3)
         
-        # 4. Diversity reranking (enhanced)
+        # 4. Diversity reranking (enhanced) - ensures we get diverse sources
         max_per_page = kwargs.get("max_per_page", 2)
         max_per_document = kwargs.get("max_per_document", None)
         filtered = rerank_by_diversity(filtered, top_k, max_per_page, max_per_document)
+        
+        # 5. Final similarity boost - ensure top results have high similarity
+        # Re-sort by similarity as tie-breaker for final ranking
+        filtered.sort(key=lambda x: x[3], reverse=True)
         
         return filtered
     

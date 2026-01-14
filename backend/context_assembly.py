@@ -121,16 +121,19 @@ def assemble_context(
     max_tokens: int = 2000,
     model: str = "gpt-3.5-turbo",
     deduplicate: bool = True,
-    prioritize_high_similarity: bool = True
+    prioritize_high_similarity: bool = True,
+    reserve_tokens: int = 200
 ) -> Tuple[str, List[Dict[str, Any]], int]:
     """
     Assemble context from retrieved chunks with smart window management.
     
-    Features:
+    Enhanced features:
     - Deduplication of similar chunks
-    - Token-aware truncation
+    - Token-aware truncation with better boundary detection
     - Priority-based selection (high similarity first)
-    - Smart truncation of individual chunks if needed
+    - Smart truncation of individual chunks at sentence/paragraph boundaries
+    - Token reservation for prompt overhead
+    - Better token estimation
     
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
@@ -138,12 +141,16 @@ def assemble_context(
         model: Model name for token counting
         deduplicate: Whether to deduplicate chunks
         prioritize_high_similarity: Prioritize high-similarity chunks
+        reserve_tokens: Tokens to reserve for prompt overhead (default: 200)
     
     Returns:
         Tuple of (context_string, sources_list, tokens_used)
     """
     if not results:
         return "", [], 0
+    
+    # Reserve tokens for prompt overhead
+    effective_max_tokens = max(100, max_tokens - reserve_tokens)
     
     # Deduplicate if enabled
     if deduplicate:
@@ -153,7 +160,7 @@ def assemble_context(
     if prioritize_high_similarity:
         results = sorted(results, key=lambda x: x[3], reverse=True)
     
-    # Build context with token management
+    # Build context with enhanced token management
     context_parts = []
     sources = []
     total_tokens = 0
@@ -161,29 +168,51 @@ def assemble_context(
     
     for i, (chunk_text, filename, page_number, similarity) in enumerate(results, 1):
         # Estimate tokens for this chunk with header
-        chunk_tokens = count_tokens(chunk_text, model) + header_tokens
+        chunk_tokens = count_tokens(chunk_text, model)
+        chunk_with_header_tokens = chunk_tokens + header_tokens
         
         # If adding this chunk would exceed limit, try truncating it
-        if total_tokens + chunk_tokens > max_tokens:
+        if total_tokens + chunk_with_header_tokens > effective_max_tokens:
             # Calculate available tokens
-            available_tokens = max_tokens - total_tokens - header_tokens
+            available_tokens = effective_max_tokens - total_tokens - header_tokens
             
-            if available_tokens > 50:  # Only include if we have meaningful space
-                # Truncate chunk to fit
-                # Rough estimate: 1 token ≈ 4 chars, but be conservative
-                max_chars = available_tokens * 3  # Conservative estimate
+            if available_tokens > 30:  # Only include if we have meaningful space (lowered threshold)
+                # Better truncation: try to preserve complete sentences
+                # Estimate characters per token (conservative: 3 chars per token)
+                max_chars = available_tokens * 3
                 truncated_chunk = chunk_text[:max_chars]
                 
-                # Try to truncate at sentence boundary
-                last_period = truncated_chunk.rfind('.')
-                last_newline = truncated_chunk.rfind('\n')
-                truncate_at = max(last_period, last_newline)
+                # Try to truncate at sentence boundary (prefer periods)
+                best_truncate = -1
                 
-                if truncate_at > max_chars * 0.7:  # Only if we keep most of it
-                    truncated_chunk = truncated_chunk[:truncate_at + 1]
+                # Look for sentence endings in reverse order
+                for delimiter in ['. ', '.\n', '! ', '?\n', '?\n']:
+                    pos = truncated_chunk.rfind(delimiter)
+                    if pos > max_chars * 0.5:  # Only if we keep at least 50%
+                        best_truncate = pos + len(delimiter)
+                        break
                 
-                chunk_text = truncated_chunk + "..."
-                chunk_tokens = count_tokens(chunk_text, model) + header_tokens
+                # Fallback to paragraph boundary
+                if best_truncate == -1:
+                    best_truncate = truncated_chunk.rfind('\n\n')
+                    if best_truncate > max_chars * 0.5:
+                        best_truncate += 2
+                
+                # Fallback to single newline
+                if best_truncate == -1:
+                    best_truncate = truncated_chunk.rfind('\n')
+                    if best_truncate > max_chars * 0.6:
+                        best_truncate += 1
+                
+                if best_truncate > max_chars * 0.5:
+                    truncated_chunk = truncated_chunk[:best_truncate]
+                else:
+                    # Last resort: hard truncate but add ellipsis
+                    truncated_chunk = truncated_chunk[:max_chars - 3]
+                
+                chunk_text = truncated_chunk + ("..." if len(truncated_chunk) < len(chunk_text) else "")
+                chunk_tokens = count_tokens(chunk_text, model)
+                chunk_with_header_tokens = chunk_tokens + header_tokens
             else:
                 # Not enough space, stop adding chunks
                 break
@@ -195,13 +224,15 @@ def assemble_context(
             "filename": filename,
             "page_number": int(page_number),
             "similarity": float(similarity),
-            "text_preview": chunk_text[:100] + "..." if len(chunk_text) > 100 else chunk_text
+            "text_preview": chunk_text[:100] + "..." if len(chunk_text) > 100 else chunk_text,
+            "tokens": chunk_tokens,
+            "truncated": len(chunk_text) < len(results[i-1][0]) if i <= len(results) else False
         })
         
-        total_tokens += chunk_tokens
+        total_tokens += chunk_with_header_tokens
         
         # Stop if we've reached the limit
-        if total_tokens >= max_tokens:
+        if total_tokens >= effective_max_tokens:
             break
     
     context = "\n".join(context_parts)

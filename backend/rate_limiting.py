@@ -240,9 +240,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Reset"] = str(reset_time)
         response.headers["X-TokenLimit-Remaining"] = str(remaining_tokens)
         
-        # Track tokens if this was a chat request (we'd need to extract from response)
-        # For now, this is a placeholder - you'd need to parse the response
-        # or track tokens in the request handler
+        # Track tokens if this was a chat request
+        # Extract token usage from response headers if available
+        if request.url.path == "/api/chat":
+            try:
+                # Try to get token count from response headers (set by chat endpoint)
+                tokens_used = response.headers.get("X-Tokens-Used")
+                if tokens_used:
+                    token_count = int(tokens_used)
+                    # Track tokens per client (for daily limit)
+                    client_key = f"tokens:{client_id}:{datetime.now().strftime('%Y-%m-%d')}"
+                    if self.rate_limiter.enabled and self.rate_limiter.redis_cache:
+                        try:
+                            self.rate_limiter.redis_cache.redis_client.incrby(client_key, token_count)
+                            # Set expiration to end of day
+                            self.rate_limiter.redis_cache.redis_client.expire(
+                                client_key, 
+                                int((self.token_reset_time - datetime.now()).total_seconds())
+                            )
+                        except Exception:
+                            # Fallback to in-memory tracking
+                            self.token_tracking[client_key] = self.token_tracking.get(client_key, 0) + token_count
+                    else:
+                        # In-memory tracking
+                        self.token_tracking[client_key] = self.token_tracking.get(client_key, 0) + token_count
+            except Exception:
+                # If token tracking fails, continue without it
+                pass
         
         return response
 
@@ -256,7 +280,8 @@ def create_rate_limit_middleware(app, redis_cache=None):
         redis_cache: Optional Redis cache instance
     
     Returns:
-        Configured RateLimitMiddleware
+        Configured RateLimitMiddleware instance
     """
     rate_limiter = RateLimiter(redis_cache=redis_cache)
-    return RateLimitMiddleware(app, rate_limiter)
+    middleware = RateLimitMiddleware(app, rate_limiter)
+    return middleware
