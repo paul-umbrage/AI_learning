@@ -1,0 +1,202 @@
+{
+  "description": "Example prompts organized by category for RAG system testing",
+  "categories": {
+    "basic_definitions": [
+      "What is machine learning?",
+      "What is artificial intelligence?",
+      "What is deep learning?",
+      "What is neural network?",
+      "What is natural language processing?",
+      "What is reinforcement learning?",
+      "What is supervised learning?",
+      "What is unsupervised learning?",
+      "What is RAG (Retrieval-Augmented Generation)?",
+      "What are embeddings?",
+      "What is a transformer?",
+      "What is backpropagation?",
+      "What is gradient descent?",
+      "What is overfitting?",
+      "What is regularization?"
+    ],
+    "how_to_process": [
+      "How does machine learning work?",
+      "How does backpropagation work?",
+      "How do neural networks learn?",
+      "How does gradient descent optimize models?",
+      "How does RAG retrieve relevant information?",
+      "How do embeddings capture semantic meaning?",
+      "How does supervised learning differ from unsupervised learning?",
+      "How does a transformer process text?",
+      "How do you train a machine learning model?",
+      "How does reinforcement learning work?",
+      "How do you prevent overfitting?",
+      "How does cross-validation work?"
+    ],
+    "list_enumeration": [
+      "List types of machine learning algorithms",
+      "What are the different types of neural networks?",
+      "What are the key concepts in AI?",
+      "What are the main NLP tasks?",
+      "What are the advantages of deep learning?",
+      "What are the components of a neural network?",
+      "What are the steps in training a model?",
+      "What are the types of learning in machine learning?",
+      "What are the applications of AI?",
+      "What are the challenges in NLP?"
+    ],
+    "comparison": [
+      "Compare supervised and unsupervised learning",
+      "What's the difference between machine learning and deep learning?",
+      "Compare neural networks and traditional algorithms",
+      "What's the difference between AI and machine learning?",
+      "Compare RAG and traditional language models",
+      "What's the difference between classification and regression?",
+      "Compare batch learning and online learning",
+      "What's the difference between precision and recall?",
+      "Compare BERT and GPT models",
+      "What's the difference between overfitting and underfitting?"
+    ],
+    "technical_detailed": [
+      "Explain the architecture of a transformer model",
+      "Describe the backpropagation algorithm in detail",
+      "What is the mathematical formulation of gradient descent?",
+      "How do attention mechanisms work in transformers?",
+      "Explain the difference between feedforward and recurrent neural networks",
+      "What are the hyperparameters in neural network training?",
+      "Describe the process of fine-tuning a language model",
+      "What is the role of activation functions in neural networks?",
+      "Explain batch normalization and its benefits",
+      "What are the different optimization algorithms used in deep learning?"
+    ],
+    "complex_multipart": [
+      "Explain neural networks and their applications in computer vision",
+      "What is machine learning and how does it differ from traditional programming?",
+      "Describe the relationship between AI, machine learning, and deep learning",
+      "How do embeddings work and why are they important for NLP?",
+      "Explain supervised learning, unsupervised learning, and reinforcement learning",
+      "What are transformers and how have they revolutionized NLP?",
+      "Describe the training process for a deep learning model",
+      "What is RAG and how does it improve language model responses?",
+      "Explain the challenges and solutions in natural language processing",
+      "How do neural networks process and understand text data?"
+    ],
+    "edge_cases": {
+      "very_short": [
+        "AI",
+        "ML",
+        "learning"
+      ],
+      "very_long": [
+        "What is machine learning and how does it differ from traditional programming approaches in terms of data handling, algorithm development, model training, and deployment strategies, and what are the key advantages and challenges associated with implementing machine learning solutions in real-world applications?"
+      ],
+      "special_characters": [
+        "What is RAG (Retrieval-Augmented Generation)?",
+        "What is NLP? How does it work?",
+        "What's the difference between AI & ML?",
+        "What is a transformer? (BERT, GPT, etc.)"
+      ],
+      "numeric": [
+        "What is the learning rate 0.01 used for?",
+        "What does batch size 32 mean?",
+        "What is the significance of 128 dimensions in embeddings?"
+      ],
+      "ambiguous": [
+        "What is a model?",
+        "What is training?",
+        "What is a network?",
+        "What is learning?"
+      ],
+      "negation": [
+        "What is not machine learning?",
+        "What are the limitations of AI?",
+        "What can't neural networks do?"
+      ],
+      "temporal": [
+        "What are recent developments in AI?",
+        "What are the latest trends in machine learning?",
+        "What is the history of neural networks?"
+      ]
+    },
+    "domain_specific": {
+      "nlp": [
+        "What is named entity recognition?",
+        "How does sentiment analysis work?",
+        "What is machine translation?",
+        "How do text classification models work?",
+        "What is question answering in NLP?",
+        "What are word embeddings?",
+        "What is tokenization?",
+        "What is part-of-speech tagging?"
+      ],
+      "computer_vision": [
+        "How do CNNs process images?",
+        "What is image classification?",
+        "How does object detection work?",
+        "What is image segmentation?",
+        "How do vision transformers work?"
+      ],
+      "reinforcement_learning": [
+        "What is the reward function in reinforcement learning?",
+        "How does an agent learn in RL?",
+        "What is Q-learning?",
+        "What is policy gradient?",
+        "How does exploration vs exploitation work?"
+      ],
+      "deep_learning": [
+        "What is a convolutional neural network?",
+        "What is a recurrent neural network?",
+        "What is an LSTM?",
+        "What is a GAN (Generative Adversarial Network)?",
+        "What is transfer learning?",
+        "What is fine-tuning?"
+      ]
+    }
+  },
+  "testing_scenarios": {
+    "precision": [
+      "What is the definition of machine learning?",
+      "What are the three types of learning in ML?",
+      "What is the purpose of embeddings?"
+    ],
+    "recall": [
+      "Tell me everything about neural networks",
+      "What do you know about transformers?",
+      "Explain all aspects of RAG"
+    ],
+    "context_understanding": [
+      "Based on the document, what is AI?",
+      "According to the text, how does ML work?",
+      "What does the document say about deep learning?"
+    ],
+    "source_attribution": [
+      "What page discusses machine learning?",
+      "Which document explains neural networks?",
+      "Where is RAG mentioned?"
+    ]
+  },
+  "usage_examples": {
+    "basic_query": {
+      "message": "What is machine learning?",
+      "use_rag": true,
+      "use_reranking": true
+    },
+    "with_query_expansion": {
+      "message": "How does backpropagation work?",
+      "use_rag": true,
+      "use_reranking": true,
+      "use_query_expansion": true
+    },
+    "with_hybrid_search": {
+      "message": "What is RAG?",
+      "use_rag": true,
+      "use_hybrid_search": true,
+      "vector_weight": 0.7,
+      "keyword_weight": 0.3
+    },
+    "with_prompt_strategy": {
+      "message": "Explain neural networks in detail",
+      "use_rag": true,
+      "prompt_strategy": "technical"
+    }
+  }
+}
