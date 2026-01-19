@@ -257,6 +257,122 @@ def create_test_suite() -> List[Dict[str, Any]]:
             "query": "What are recent developments in AI?",
             "expected_chunks": ["AI", "developments", "recent"],
             "description": "Temporal query"
+        },
+        
+        # Additional test cases for enhanced coverage
+        {
+            "name": "acronym_query",
+            "query": "What does NLP stand for?",
+            "expected_chunks": ["NLP", "natural language processing"],
+            "description": "Query asking about acronym"
+        },
+        {
+            "name": "synonym_query",
+            "query": "What is deep learning?",
+            "expected_chunks": ["deep learning", "neural network", "machine learning"],
+            "description": "Query using synonym terms"
+        },
+        {
+            "name": "multi_concept_query",
+            "query": "How do transformers and embeddings work together?",
+            "expected_chunks": ["transformer", "embedding", "NLP"],
+            "description": "Query about multiple related concepts"
+        },
+        {
+            "name": "specific_value_query",
+            "query": "What is batch size in training?",
+            "expected_chunks": ["batch size", "training", "model"],
+            "description": "Query about specific technical parameter"
+        },
+        {
+            "name": "application_query",
+            "query": "What are the applications of machine learning?",
+            "expected_chunks": ["machine learning", "applications", "use cases"],
+            "description": "Query about applications"
+        },
+        {
+            "name": "relationship_query",
+            "query": "How is AI related to machine learning?",
+            "expected_chunks": ["AI", "machine learning", "relationship"],
+            "description": "Query about relationships between concepts"
+        },
+        {
+            "name": "step_by_step_query",
+            "query": "What are the steps to train a neural network?",
+            "expected_chunks": ["neural network", "training", "steps", "process"],
+            "description": "Query asking for step-by-step process"
+        },
+        {
+            "name": "advantage_query",
+            "query": "What are the advantages of using deep learning?",
+            "expected_chunks": ["deep learning", "advantages", "benefits"],
+            "description": "Query about advantages"
+        },
+        {
+            "name": "challenge_query",
+            "query": "What are the challenges in NLP?",
+            "expected_chunks": ["NLP", "challenges", "difficulties"],
+            "description": "Query about challenges"
+        },
+        {
+            "name": "example_query",
+            "query": "Give examples of supervised learning",
+            "expected_chunks": ["supervised learning", "examples", "types"],
+            "description": "Query asking for examples"
+        },
+        {
+            "name": "when_query",
+            "query": "When should you use reinforcement learning?",
+            "expected_chunks": ["reinforcement learning", "when", "use cases"],
+            "description": "Query with 'when' question"
+        },
+        {
+            "name": "why_query",
+            "query": "Why is regularization important?",
+            "expected_chunks": ["regularization", "importance", "overfitting"],
+            "description": "Query with 'why' question"
+        },
+        {
+            "name": "where_query",
+            "query": "Where is computer vision used?",
+            "expected_chunks": ["computer vision", "applications", "use cases"],
+            "description": "Query with 'where' question"
+        },
+        {
+            "name": "quantitative_query",
+            "query": "How many layers are in a deep neural network?",
+            "expected_chunks": ["neural network", "layers", "deep"],
+            "description": "Query asking for quantitative information"
+        },
+        {
+            "name": "causal_query",
+            "query": "What causes overfitting in machine learning?",
+            "expected_chunks": ["overfitting", "causes", "machine learning"],
+            "description": "Query about causes"
+        },
+        {
+            "name": "method_query",
+            "query": "What methods are used for text classification?",
+            "expected_chunks": ["text classification", "methods", "NLP"],
+            "description": "Query about methods"
+        },
+        {
+            "name": "component_query",
+            "query": "What are the components of a transformer?",
+            "expected_chunks": ["transformer", "components", "architecture"],
+            "description": "Query about components"
+        },
+        {
+            "name": "technique_query",
+            "query": "What techniques are used for preventing overfitting?",
+            "expected_chunks": ["overfitting", "techniques", "regularization"],
+            "description": "Query about techniques"
+        },
+        {
+            "name": "principle_query",
+            "query": "What are the principles of machine learning?",
+            "expected_chunks": ["machine learning", "principles", "fundamentals"],
+            "description": "Query about principles"
         }
     ]
     
@@ -356,6 +472,72 @@ def test_edge_cases(evaluator: RAGEvaluator, verbose: bool = True) -> Dict[str, 
             "query": "什么是机器学习？",  # "What is machine learning?" in Chinese
             "expected_chunks": [],
             "description": "Edge case: Non-English query"
+        },
+        {
+            "name": "repeated_words",
+            "query": "learning learning learning",
+            "expected_chunks": ["learning"],
+            "description": "Edge case: Repeated words"
+        },
+        {
+            "name": "all_caps",
+            "query": "WHAT IS MACHINE LEARNING?",
+            "expected_chunks": ["machine learning", "AI"],
+            "description": "Edge case: All caps query"
+        },
+        {
+            "name": "mixed_case",
+            "query": "WhAt Is MaChInE LeArNiNg?",
+            "expected_chunks": ["machine learning"],
+            "description": "Edge case: Mixed case query"
+        },
+        {
+            "name": "numbers_only",
+            "query": "123 456 789",
+            "expected_chunks": [],
+            "description": "Edge case: Numbers only"
+        },
+        {
+            "name": "punctuation_only",
+            "query": "?!.,;:",
+            "expected_chunks": [],
+            "description": "Edge case: Punctuation only"
+        },
+        {
+            "name": "very_long_single_word",
+            "query": "supercalifragilisticexpialidocious",
+            "expected_chunks": [],
+            "description": "Edge case: Very long single word"
+        },
+        {
+            "name": "sql_injection_attempt",
+            "query": "'; DROP TABLE chunks; --",
+            "expected_chunks": [],
+            "description": "Edge case: SQL injection attempt (should be handled safely)"
+        },
+        {
+            "name": "html_tags",
+            "query": "<script>alert('test')</script>",
+            "expected_chunks": [],
+            "description": "Edge case: HTML tags in query"
+        },
+        {
+            "name": "newlines",
+            "query": "What is\nmachine\nlearning?",
+            "expected_chunks": ["machine learning"],
+            "description": "Edge case: Query with newlines"
+        },
+        {
+            "name": "tabs",
+            "query": "What is\tmachine\tlearning?",
+            "expected_chunks": ["machine learning"],
+            "description": "Edge case: Query with tabs"
+        },
+        {
+            "name": "multiple_spaces",
+            "query": "What is    machine    learning?",
+            "expected_chunks": ["machine learning"],
+            "description": "Edge case: Multiple spaces"
         }
     ]
     
@@ -465,6 +647,87 @@ def generate_evaluation_report(
     return report
 
 
+def test_retrieval_quality_scenarios(evaluator: RAGEvaluator, verbose: bool = True) -> Dict[str, Any]:
+    """
+    Test specific retrieval quality scenarios.
+    
+    Args:
+        evaluator: RAGEvaluator instance
+        verbose: Print detailed results
+    
+    Returns:
+        Quality scenario test results
+    """
+    quality_tests = [
+        {
+            "name": "high_precision_query",
+            "query": "What is the exact definition of machine learning?",
+            "expected_chunks": ["machine learning", "definition"],
+            "description": "Query requiring high precision (exact match)"
+        },
+        {
+            "name": "high_recall_query",
+            "query": "Tell me everything about neural networks",
+            "expected_chunks": ["neural network", "deep learning", "layers", "training"],
+            "description": "Query requiring high recall (comprehensive coverage)"
+        },
+        {
+            "name": "semantic_similarity",
+            "query": "How do computers learn from data?",
+            "expected_chunks": ["machine learning", "training", "algorithms"],
+            "description": "Query testing semantic similarity (synonyms)"
+        },
+        {
+            "name": "context_dependent",
+            "query": "What does it mean in the context of AI?",
+            "expected_chunks": ["AI", "artificial intelligence"],
+            "description": "Query requiring context understanding"
+        },
+        {
+            "name": "multi_hop_reasoning",
+            "query": "How does backpropagation help neural networks learn?",
+            "expected_chunks": ["backpropagation", "neural network", "learning", "gradient"],
+            "description": "Query requiring multi-hop reasoning"
+        }
+    ]
+    
+    if verbose:
+        print("\n" + "=" * 80)
+        print("Retrieval Quality Scenario Testing")
+        print("=" * 80)
+    
+    results = {}
+    for test_case in quality_tests:
+        try:
+            metrics = evaluator.evaluate_retrieval(
+                query=test_case["query"],
+                expected_chunks=test_case["expected_chunks"],
+                use_reranking=True,
+                top_k=5
+            )
+            results[test_case["name"]] = {
+                "status": "completed",
+                "metrics": metrics,
+                "description": test_case["description"]
+            }
+            if verbose:
+                print(f"\n{test_case['name']}: {test_case['description']}")
+                print(f"  Precision: {metrics.get('precision', 0):.3f}")
+                print(f"  Recall: {metrics.get('recall', 0):.3f}")
+                print(f"  F1: {metrics.get('f1_score', 0):.3f}")
+        except Exception as e:
+            results[test_case["name"]] = {
+                "status": "error",
+                "error": str(e),
+                "description": test_case["description"]
+            }
+            if verbose:
+                print(f"\n{test_case['name']}: {test_case['description']}")
+                print(f"  Status: ❌ Error - {e}")
+    
+    return results
+
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
@@ -480,6 +743,10 @@ if __name__ == "__main__":
     print("\nTesting edge cases...")
     edge_case_results = test_edge_cases(evaluator, verbose=True)
     
+    # Test retrieval quality scenarios
+    print("\nTesting retrieval quality scenarios...")
+    quality_results = test_retrieval_quality_scenarios(evaluator, verbose=True)
+    
     # Generate report
     print("\nGenerating evaluation report...")
     report = generate_evaluation_report(
@@ -489,3 +756,13 @@ if __name__ == "__main__":
     )
     
     print("\n" + report)
+    
+    # Print quality scenario summary
+    if quality_results:
+        print("\n" + "=" * 80)
+        print("Retrieval Quality Scenarios Summary")
+        print("=" * 80)
+        for name, result in quality_results.items():
+            if result.get("status") == "completed":
+                metrics = result.get("metrics", {})
+                print(f"{name}: P={metrics.get('precision', 0):.3f}, R={metrics.get('recall', 0):.3f}, F1={metrics.get('f1_score', 0):.3f}")
