@@ -31,7 +31,7 @@ from redis_cache import (
     get_cached_query_expansion, cache_query_expansion,
     get_cached_pdf_list, cache_pdf_list, invalidate_pdf_cache,
     get_cached_search_results, cache_search_results,
-    get_cache_stats,
+    get_cache_stats, clear_all_cache, clear_search_cache,
     get_redis_cache
 )
 
@@ -120,6 +120,32 @@ async def get_cache_stats_endpoint():
     """
     return get_cache_stats()
 
+@app.post("/api/cache/clear")
+async def clear_cache_endpoint(clear_all: bool = False):
+    """
+    Clear Redis cache
+    
+    Args:
+        clear_all: If True, clear all cache. If False, only clear search cache.
+    
+    Returns:
+        Operation result
+    """
+    from redis_cache import clear_all_cache, clear_search_cache
+    
+    if clear_all:
+        result = clear_all_cache()
+    else:
+        result = clear_search_cache()
+    
+    logger.info(
+        "cache_cleared",
+        clear_all=clear_all,
+        result=result
+    )
+    
+    return result
+
 @app.get("/api/config")
 async def get_config_endpoint():
     """
@@ -155,6 +181,88 @@ async def get_retrieval_metrics(
     )
     
     return metrics
+
+@app.get("/api/debug/retrieval")
+async def debug_retrieval(
+    query: str = Query("what are mammals?"),
+    filename: Optional[str] = Query("animal_kingdom.pdf")
+):
+    """
+    Debug endpoint to test retrieval and see what's happening with sources.
+    """
+    request_id = "debug_test"
+    
+    if not client:
+        return {"error": "OpenAI client not initialized. Check OPENAI_API_KEY.", "client_is_none": True}
+    
+    try:
+        # Step 1: Get embedding
+        print(f"[DEBUG] Getting embedding for: {query}")
+        query_embedding = get_query_embedding(query, request_id)
+        if not query_embedding:
+            return {
+                "error": "Failed to get embedding", 
+                "client_available": client is not None,
+                "api_key_set": bool(os.getenv("OPENAI_API_KEY"))
+            }
+        print(f"[DEBUG] Embedding generated: {len(query_embedding)} dims")
+        
+        # Step 2: Search
+        vector_results = search_similar_chunks(query_embedding, filename=filename, limit=10)
+        
+        # Step 3: Rerank
+        from reranking import rerank_chunks
+        reranked = rerank_chunks(
+            query=query,
+            results=vector_results,
+            strategy="combined",
+            top_k=3,
+            min_similarity=RAGConfig.MIN_SIMILARITY_THRESHOLD
+        )
+        
+        # Step 4: Assemble context
+        context, sources, tokens = assemble_context(
+            results=reranked,
+            max_tokens=RAGConfig.CONTEXT_MAX_TOKENS,
+            model="gpt-3.5-turbo",
+            deduplicate=True,
+            prioritize_high_similarity=True,
+            reserve_tokens=RAGConfig.CONTEXT_RESERVE_TOKENS
+        )
+        
+        # Step 5: Full build_rag_context
+        full_context, full_sources, variations = build_rag_context(
+            query=query,
+            filename=filename,
+            top_k=3,
+            use_reranking=True,
+            rerank_strategy="combined",
+            request_id=request_id,
+            model="gpt-3.5-turbo"
+        )
+        
+        return {
+            "query": query,
+            "filename": filename,
+            "vector_results_count": len(vector_results),
+            "reranked_count": len(reranked),
+            "context_length": len(context),
+            "sources_count": len(sources),
+            "full_context_length": len(full_context),
+            "full_sources_count": len(full_sources),
+            "vector_results_sample": str(vector_results[0])[:200] if vector_results else None,
+            "reranked_sample": str(reranked[0])[:200] if reranked else None,
+            "sources": sources,
+            "full_sources": full_sources,
+            "context_preview": context[:500] if context else None,
+            "full_context_preview": full_context[:500] if full_context else None
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 @retry_with_backoff(max_retries=3, initial_delay=1.0, exceptions=(Exception,))
 def get_query_embedding(query: str, request_id: str = "unknown") -> list:
@@ -194,8 +302,7 @@ def get_query_embedding(query: str, request_id: str = "unknown") -> list:
             query=query,
             model="text-embedding-ada-002",
             duration_ms=duration_ms,
-            embedding_dim=len(embedding),
-            cached=False
+            embedding_dim=len(embedding)
         )
         
         return embedding
@@ -360,8 +467,12 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
             similarities_before = [r[3] for r in results]
             avg_similarity_before_rerank = sum(similarities_before) / len(similarities_before) if similarities_before else None
         
+        # Store original results before reranking for fallback
+        original_results_before_rerank = results.copy() if results else []
+        
         # Apply reranking if enabled
         if use_reranking:
+            results_before_rerank = len(results)
             results = rerank_chunks(
                 query=query,
                 results=results,
@@ -369,6 +480,32 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                 top_k=top_k,
                 min_similarity=RAGConfig.MIN_SIMILARITY_THRESHOLD
             )
+            results_after_rerank = len(results)
+            
+            # If all results filtered by threshold, use lower threshold as fallback
+            if results_after_rerank == 0 and results_before_rerank > 0:
+                logger.warning(
+                    "all_results_filtered_by_reranking",
+                    request_id=request_id,
+                    query_preview=query[:100],
+                    results_before=results_before_rerank,
+                    min_similarity_threshold=RAGConfig.MIN_SIMILARITY_THRESHOLD,
+                    top_similarities_before=[r[3] for r in original_results_before_rerank[:5]] if original_results_before_rerank else []
+                )
+                # Try with lower threshold (0.5 instead of 0.7) to ensure we get some results
+                results = rerank_chunks(
+                    query=query,
+                    results=original_results_before_rerank,
+                    strategy=rerank_strategy,
+                    top_k=top_k,
+                    min_similarity=0.5  # Lower threshold as fallback
+                )
+                logger.info(
+                    "fallback_to_lower_threshold",
+                    request_id=request_id,
+                    fallback_results_count=len(results),
+                    threshold_used=0.5
+                )
         else:
             # Just take top_k if no reranking
             results = results[:top_k]
@@ -379,15 +516,34 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                 "no_results_found",
                 request_id=request_id,
                 query=query[:100],
-                filename=filename
+                filename=filename,
+                vector_results_count=len(vector_results) if 'vector_results' in locals() else 0,
+                after_reranking=True
             )
             return "", [], query_variations
+        
+        # Log results before context assembly for debugging
+        logger.info(
+            "results_before_context_assembly",
+            request_id=request_id,
+            results_count=len(results),
+            top_similarities=[r[3] for r in results[:3]] if results else [],
+            query_preview=query[:100],
+            sample_result=results[0] if results else None,
+            results_type=str(type(results)),
+            first_result_type=str(type(results[0])) if results else "no_results",
+            first_result_preview=str(results[0])[:200] if results else None
+        )
+        
+        # Store original results before optimization for fallback
+        original_results_for_fallback = results.copy() if results else []
         
         # Optimize context order for better flow
         results = optimize_context_order(results, query)
         
         # Build context with smart assembly (deduplication + token management)
-        context, sources, context_tokens = assemble_context(
+        # Ensure we pass all required parameters explicitly
+        assembly_result = assemble_context(
             results=results,
             max_tokens=RAGConfig.CONTEXT_MAX_TOKENS,
             model=model,
@@ -396,15 +552,129 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
             reserve_tokens=RAGConfig.CONTEXT_RESERVE_TOKENS
         )
         
+        # Unpack result and verify
+        if isinstance(assembly_result, tuple) and len(assembly_result) >= 3:
+            context, sources, context_tokens = assembly_result[0], assembly_result[1], assembly_result[2]
+        else:
+            logger.error(
+                "invalid_assemble_context_return",
+                request_id=request_id,
+                return_type=str(type(assembly_result)),
+                return_value=str(assembly_result)[:200]
+            )
+            context, sources, context_tokens = "", [], 0
+        
+        # CRITICAL: Verify sources immediately after assembly
+        logger.info(
+            "context_assembly_complete",
+            request_id=request_id,
+            query_preview=query[:100],
+            results_count=len(results),
+            context_length=len(context) if context else 0,
+            sources_count=len(sources) if sources else 0,
+            sources_type=type(sources).__name__ if sources else "None",
+            sources_is_list=isinstance(sources, list),
+            context_tokens=context_tokens,
+            sources_sample=sources[0] if sources and len(sources) > 0 else None,
+            assembly_return_type=str(type(assembly_result)),
+            assembly_return_length=len(assembly_result) if isinstance(assembly_result, (list, tuple)) else "N/A"
+        )
+        
+        # CRITICAL: If sources is not a list, fix it
+        if not isinstance(sources, list):
+            logger.error(
+                "sources_not_list_after_assembly",
+                request_id=request_id,
+                sources_type=str(type(sources)),
+                sources_value=str(sources)[:200]
+            )
+            sources = []
+        
+        # CRITICAL FIX: If context exists but sources are empty, rebuild sources from results
+        if context and len(context) > 0 and (not sources or len(sources) == 0):
+            logger.error(
+                "sources_empty_but_context_exists",
+                request_id=request_id,
+                query_preview=query[:100],
+                context_length=len(context),
+                results_count=len(results),
+                results_type=str(type(results)),
+                first_result_type=str(type(results[0])) if results else "no_results",
+                first_result_preview=str(results[0])[:200] if results else None,
+                rebuilding_sources=True
+            )
+            # Rebuild sources from results - this should never happen but is a safety net
+            sources = []
+            # Use original results before optimization (stored above)
+            rebuild_results = original_results_for_fallback if original_results_for_fallback else results
+            for i, result in enumerate(rebuild_results[:top_k * 2], 1):  # Get more to ensure we have enough
+                try:
+                    if isinstance(result, (list, tuple)) and len(result) >= 4:
+                        chunk_text, filename, page_number, similarity = result[0], result[1], result[2], result[3]
+                        sources.append({
+                            "chunk_index": i,
+                            "filename": str(filename) if filename else "unknown",
+                            "page_number": int(page_number) if page_number is not None else 0,
+                            "similarity": float(similarity) if similarity is not None else 0.0,
+                            "text_preview": (chunk_text[:100] + "...") if len(chunk_text) > 100 else chunk_text
+                        })
+                    else:
+                        logger.warning(
+                            "invalid_result_format_in_rebuild",
+                            request_id=request_id,
+                            result_index=i-1,
+                            result_type=str(type(result)),
+                            result_length=len(result) if isinstance(result, (list, tuple)) else "N/A"
+                        )
+                except Exception as e:
+                    logger.error(
+                        "error_rebuilding_source",
+                        request_id=request_id,
+                        result_index=i-1,
+                        error=str(e),
+                        result_preview=str(result)[:200]
+                    )
+            logger.info(
+                "sources_rebuilt_from_results",
+                request_id=request_id,
+                rebuilt_sources_count=len(sources),
+                results_used=min(len(results), top_k * 2)
+            )
+        
+        # CRITICAL: Ensure sources is never None - always return a list
+        if sources is None:
+            sources = []
+            logger.error(
+                "sources_was_none",
+                request_id=request_id,
+                query_preview=query[:100]
+            )
+        
         # Edge case: Empty context after assembly
-        if not context or not sources:
+        # CRITICAL: Only return early if context is empty. If context exists, keep sources even if empty (will rebuild)
+        if not context:
             logger.warning(
                 "empty_context_after_assembly",
                 request_id=request_id,
                 query=query[:100],
-                results_count=len(results)
+                results_count=len(results),
+                context_length=0,
+                sources_count=len(sources) if sources else 0
             )
             return "", [], query_variations
+        
+        # If context exists but sources are empty, we already rebuilt them above
+        # So just log a warning but continue
+        if not sources or len(sources) == 0:
+            logger.warning(
+                "sources_empty_but_context_exists_after_assembly",
+                request_id=request_id,
+                query=query[:100],
+                context_length=len(context),
+                results_count=len(results),
+                note="Sources should have been rebuilt above, but are still empty"
+            )
+            # Don't return - continue with empty sources, they should have been rebuilt
         
         # Extract similarities for enhanced logging
         similarities = [s["similarity"] for s in sources]
@@ -471,6 +741,48 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight
             )
+        
+        # FINAL SAFETY CHECK: Ensure sources match context
+        # If we have context, we MUST have sources (one per context part)
+        if context and len(context) > 0:
+            # Count context parts by looking for [Context X] markers
+            context_parts_count = context.count("[Context")
+            if len(sources) != context_parts_count and context_parts_count > 0:
+                logger.error(
+                    "sources_count_mismatch_before_return",
+                    request_id=request_id,
+                    context_parts_count=context_parts_count,
+                    sources_count=len(sources),
+                    query_preview=query[:100],
+                    rebuilding_sources=True
+                )
+                # Rebuild sources to match context parts
+                if original_results_for_fallback and len(original_results_for_fallback) > 0:
+                    sources = []
+                    for i, result in enumerate(original_results_for_fallback[:context_parts_count], 1):
+                        try:
+                            if isinstance(result, (list, tuple)) and len(result) >= 4:
+                                chunk_text, filename, page_number, similarity = result[0], result[1], result[2], result[3]
+                                sources.append({
+                                    "chunk_index": i,
+                                    "filename": str(filename) if filename else "unknown",
+                                    "page_number": int(page_number) if page_number is not None else 0,
+                                    "similarity": float(similarity) if similarity is not None else 0.0,
+                                    "text_preview": (chunk_text[:100] + "...") if len(chunk_text) > 100 else chunk_text
+                                })
+                        except Exception as e:
+                            logger.error(f"Error in final source rebuild {i}: {e}")
+                    logger.info(
+                        "sources_rebuilt_final_check",
+                        request_id=request_id,
+                        final_sources_count=len(sources),
+                        context_parts_count=context_parts_count
+                    )
+        
+        # Ensure sources is a list
+        if not isinstance(sources, list):
+            logger.error(f"sources_not_list_at_return: {type(sources)}")
+            sources = []
         
         return context, sources, query_variations
     except Exception as e:
@@ -664,14 +976,34 @@ async def chat(request: ChatRequest):
                 request_id=request_id,
                 model=request.model
             )
-            # Log sources for debugging
+            # Log sources for debugging - CRITICAL DEBUG INFO
             logger.info(
                 "rag_sources_retrieved",
                 request_id=request_id,
-                num_sources=len(sources),
+                num_sources=len(sources) if sources else 0,
+                sources_type=type(sources).__name__,
                 has_context=bool(context),
-                use_rag=True
+                context_length=len(context) if context else 0,
+                use_rag=True,
+                sources_preview=sources[:2] if sources and len(sources) > 0 else None
             )
+            
+            # CRITICAL: Ensure sources is always a list, never None
+            if sources is None:
+                logger.error(
+                    "sources_is_none_from_build_rag_context",
+                    request_id=request_id,
+                    query_preview=request.message[:100]
+                )
+                sources = []
+            elif not isinstance(sources, list):
+                logger.error(
+                    "sources_is_not_list",
+                    request_id=request_id,
+                    sources_type=type(sources).__name__,
+                    sources_value=str(sources)[:200]
+                )
+                sources = []
             
             system_content, user_content = build_rag_prompt(
                 query=request.message,
@@ -864,17 +1196,38 @@ async def chat(request: ChatRequest):
             response_size=len(final_response)
         )
         
-        # Ensure sources is always a list
-        sources_list = sources if isinstance(sources, list) else []
+        # Ensure sources is always a list - CRITICAL FIX
+        if sources is None:
+            sources_list = []
+            logger.error(
+                "sources_was_none_at_response_creation",
+                request_id=request_id,
+                use_rag=request.use_rag
+            )
+        elif not isinstance(sources, list):
+            sources_list = []
+            logger.error(
+                "sources_was_not_list_at_response_creation",
+                request_id=request_id,
+                sources_type=type(sources).__name__,
+                use_rag=request.use_rag
+            )
+        else:
+            sources_list = sources
         
-        # Log final response structure for debugging
+        # Log final response structure for debugging - CRITICAL DEBUG
         logger.info(
             "chat_response_ready",
             request_id=request_id,
             response_length=len(final_response),
             num_sources=len(sources_list),
+            sources_type=type(sources_list).__name__,
+            sources_is_list=isinstance(sources_list, list),
             num_function_calls=len(function_calls_made) if function_calls_made else 0,
-            use_rag=request.use_rag
+            use_rag=request.use_rag,
+            has_context=bool(context),
+            context_length=len(context) if context else 0,
+            sources_preview=sources_list[:1] if sources_list else None
         )
         
         # Create response with token tracking header
@@ -884,6 +1237,14 @@ async def chat(request: ChatRequest):
             function_calls=function_calls_made if function_calls_made else None,
             hallucination_detection=hallucination_results,
             query_variations=query_variations if request.use_query_expansion else None
+        )
+        
+        # FINAL CHECK: Log what we're actually returning
+        logger.info(
+            "response_created",
+            request_id=request_id,
+            response_sources_count=len(response.sources) if response.sources else 0,
+            response_sources_type=type(response.sources).__name__ if response.sources else "None"
         )
         
         # Note: Token tracking is handled by middleware reading response

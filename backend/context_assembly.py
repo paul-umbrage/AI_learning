@@ -153,6 +153,12 @@ def assemble_context(
     if not results:
         return "", [], 0
     
+    # Ensure max_tokens and reserve_tokens have defaults
+    if max_tokens is None:
+        max_tokens = 2000
+    if reserve_tokens is None:
+        reserve_tokens = 200
+    
     # Reserve tokens for prompt overhead
     effective_max_tokens = max(100, max_tokens - reserve_tokens)
     
@@ -170,7 +176,32 @@ def assemble_context(
     total_tokens = 0
     header_tokens = count_tokens("[Context X]\n", model)  # Approximate header tokens
     
-    for i, (chunk_text, filename, page_number, similarity) in enumerate(results, 1):
+    # Debug: Log input
+    import logging
+    logger = logging.getLogger("rag_system")
+    logger.debug(f"assemble_context: received {len(results)} results")
+    
+    for i, result in enumerate(results, 1):
+        # Handle both tuple and list formats - database returns tuples
+        try:
+            if isinstance(result, (list, tuple)):
+                if len(result) >= 4:
+                    chunk_text, filename, page_number, similarity = result[0], result[1], result[2], result[3]
+                else:
+                    logger.error(f"Result has insufficient elements at index {i-1}: {result}, length: {len(result)}")
+                    continue
+            else:
+                logger.error(f"Invalid result type at index {i-1}: {type(result)}, value: {result}")
+                continue
+        except Exception as e:
+            logger.error(f"Error unpacking result at index {i-1}: {e}, result: {result}")
+            continue
+        
+        # CRITICAL: Ensure we have valid values
+        if not chunk_text or not isinstance(chunk_text, str):
+            logger.error(f"Invalid chunk_text at index {i-1}: {type(chunk_text)}, value: {str(chunk_text)[:100]}")
+            continue
+        
         # Estimate tokens for this chunk with header
         chunk_tokens = count_tokens(chunk_text, model)
         chunk_with_header_tokens = chunk_tokens + header_tokens
@@ -223,15 +254,44 @@ def assemble_context(
         
         # Add chunk to context
         context_parts.append(f"[Context {i}]\n{chunk_text}\n")
-        sources.append({
-            "chunk_index": i,
-            "filename": filename,
-            "page_number": int(page_number),
-            "similarity": float(similarity),
-            "text_preview": chunk_text[:100] + "..." if len(chunk_text) > 100 else chunk_text,
-            "tokens": chunk_tokens,
-            "truncated": len(chunk_text) < len(results[i-1][0]) if i <= len(results) else False
-        })
+        
+        # Build source entry - ensure all fields are properly set
+        # CRITICAL: Build source BEFORE adding to context_parts to ensure they stay in sync
+        try:
+            source_entry = {
+                "chunk_index": i,
+                "filename": str(filename) if filename else "unknown",
+                "page_number": int(page_number) if page_number is not None else 0,
+                "similarity": float(similarity) if similarity is not None else 0.0,
+                "text_preview": (chunk_text[:100] + "...") if len(chunk_text) > 100 else chunk_text,
+            }
+            
+            # Add optional fields
+            try:
+                source_entry["tokens"] = chunk_tokens
+                if i <= len(results):
+                    original_chunk = results[i-1][0] if isinstance(results[i-1], (list, tuple)) and len(results[i-1]) > 0 else chunk_text
+                    source_entry["truncated"] = len(chunk_text) < len(original_chunk)
+                else:
+                    source_entry["truncated"] = False
+            except Exception as e:
+                logger.warning(f"Error adding optional source fields: {e}")
+                source_entry["truncated"] = False
+            
+            # CRITICAL: Always append source immediately after building context
+            sources.append(source_entry)
+            logger.debug(f"Added source {i}: filename={source_entry['filename']}, page={source_entry['page_number']}")
+            
+        except Exception as e:
+            logger.error(f"CRITICAL: Error building source entry at index {i}: {e}, result: {result}")
+            # Create minimal source entry as fallback - MUST have a source for every context part
+            sources.append({
+                "chunk_index": i,
+                "filename": str(filename) if filename else "unknown",
+                "page_number": int(page_number) if page_number is not None else 0,
+                "similarity": float(similarity) if similarity is not None else 0.0,
+                "text_preview": chunk_text[:100] + "..." if len(chunk_text) > 100 else chunk_text
+            })
         
         total_tokens += chunk_with_header_tokens
         
@@ -243,6 +303,73 @@ def assemble_context(
     
     # Final token count (more accurate)
     final_tokens = count_tokens(context, model)
+    
+    # CRITICAL: Ensure sources list matches context_parts
+    # If we built context but sources are empty, something went wrong
+    if len(context_parts) > 0 and len(sources) == 0:
+        logger.error(
+            f"assemble_context: CRITICAL - context built ({len(context_parts)} parts) but sources empty! "
+            f"results_count={len(results)}, context_length={len(context)}, "
+            f"results_type={type(results)}, first_result_type={type(results[0]) if results else 'None'}"
+        )
+        # Try to rebuild sources from results if we still have them
+        if results and len(results) > 0:
+            logger.warning("Attempting to rebuild sources from results...")
+            for i, result in enumerate(results[:len(context_parts)], 1):
+                try:
+                    if isinstance(result, (list, tuple)) and len(result) >= 4:
+                        chunk_text, filename, page_number, similarity = result[0], result[1], result[2], result[3]
+                        sources.append({
+                            "chunk_index": i,
+                            "filename": str(filename) if filename else "unknown",
+                            "page_number": int(page_number) if page_number is not None else 0,
+                            "similarity": float(similarity) if similarity is not None else 0.0,
+                            "text_preview": (chunk_text[:100] + "...") if len(chunk_text) > 100 else chunk_text
+                        })
+                    else:
+                        # Fallback if result format is wrong
+                        sources.append({
+                            "chunk_index": i,
+                            "filename": "unknown",
+                            "page_number": 0,
+                            "similarity": 0.0,
+                            "text_preview": context_parts[i-1][:100] + "..." if i <= len(context_parts) else ""
+                        })
+                except Exception as e:
+                    logger.error(f"Error rebuilding source {i}: {e}")
+                    sources.append({
+                        "chunk_index": i,
+                        "filename": "unknown",
+                        "page_number": 0,
+                        "similarity": 0.0,
+                        "text_preview": context_parts[i-1][:100] + "..." if i <= len(context_parts) else ""
+                    })
+            logger.warning(f"assemble_context: Rebuilt {len(sources)} sources from results as fallback")
+        else:
+            # Last resort: rebuild from context_parts (loses filename/page info)
+            for i, part in enumerate(context_parts, 1):
+                sources.append({
+                    "chunk_index": i,
+                    "filename": "unknown",
+                    "page_number": 0,
+                    "similarity": 0.0,
+                    "text_preview": part[:100] + "..." if len(part) > 100 else part
+                })
+            logger.warning(f"assemble_context: Rebuilt {len(sources)} sources from context_parts as last resort")
+    
+    # Debug: Log output
+    logger.debug(f"assemble_context: returning context_length={len(context)}, sources_count={len(sources)}, tokens={final_tokens}")
+    
+    # Ensure sources is always a list
+    if not isinstance(sources, list):
+        logger.error(f"assemble_context: sources is not a list! Type: {type(sources)}, Value: {sources}")
+        sources = []
+    
+    # Final validation: sources count should match context parts
+    if len(sources) != len(context_parts):
+        logger.warning(
+            f"assemble_context: Mismatch! context_parts={len(context_parts)}, sources={len(sources)}"
+        )
     
     return context, sources, final_tokens
 

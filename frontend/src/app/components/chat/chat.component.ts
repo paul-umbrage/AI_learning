@@ -187,14 +187,25 @@ export class ChatComponent implements OnInit, OnDestroy {
           response: response.response?.substring(0, 100),
           sources: response.sources,
           sourcesLength: response.sources?.length,
+          sourcesType: typeof response.sources,
+          sourcesIsArray: Array.isArray(response.sources),
           functionCalls: response.function_calls
+        });
+        
+        // Ensure sources is always an array
+        const sources = Array.isArray(response.sources) ? response.sources : (response.sources ? [response.sources] : []);
+        
+        console.log('Processed sources:', {
+          sources,
+          length: sources.length,
+          firstSource: sources[0]
         });
         
         this.messages.update(msgs => [...msgs, {
           text: response.response,
           isUser: false,
           timestamp: new Date(),
-          sources: response.sources || [],
+          sources: sources,
           functionCalls: response.function_calls || []
         }]);
         this.isLoading.set(false);

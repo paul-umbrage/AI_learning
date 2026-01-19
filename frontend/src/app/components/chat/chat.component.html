@@ -214,7 +214,7 @@
           <!-- RAG Sources -->
           @if (message.sources && message.sources.length > 0) {
             <div class="sources-section">
-              <div class="sources-header">📚 Sources:</div>
+              <div class="sources-header">📚 Sources ({{ message.sources.length }}):</div>
               @for (source of message.sources; track source.chunk_index) {
                 <div class="source-item">
                   <div class="source-header" (click)="toggleSourcePreview(source.chunk_index)">

@@ -362,6 +362,68 @@ def get_cached_query_expansion(query: str) -> Optional[List[str]]:
     return cache.get(key)
 
 
+def clear_all_cache() -> Dict[str, Any]:
+    """
+    Clear all Redis cache entries.
+    
+    Returns:
+        Dictionary with operation result
+    """
+    cache = get_redis_cache()
+    if not cache.enabled:
+        return {
+            "success": False,
+            "message": "Redis cache is not enabled"
+        }
+    
+    try:
+        # Get all keys
+        all_keys = cache.redis_client.keys("*")
+        deleted_count = 0
+        
+        if all_keys:
+            deleted_count = cache.redis_client.delete(*all_keys)
+        
+        return {
+            "success": True,
+            "message": f"Cleared {deleted_count} cache entries",
+            "keys_deleted": deleted_count
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def clear_search_cache() -> Dict[str, Any]:
+    """
+    Clear all search-related cache entries.
+    
+    Returns:
+        Dictionary with operation result
+    """
+    cache = get_redis_cache()
+    if not cache.enabled:
+        return {
+            "success": False,
+            "message": "Redis cache is not enabled"
+        }
+    
+    try:
+        deleted_count = cache.delete_pattern(f"{CACHE_PREFIX_SEARCH}:*")
+        return {
+            "success": True,
+            "message": f"Cleared search cache",
+            "keys_deleted": deleted_count
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 def get_cache_stats() -> Dict[str, Any]:
     """
     Get cache statistics.
