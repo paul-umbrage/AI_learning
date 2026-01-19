@@ -9,22 +9,25 @@ documents with improved relevance scoring.
 from typing import List, Tuple, Dict, Any, Optional
 import re
 import hashlib
+from config import RAGConfig
 
 
 def rerank_by_similarity_threshold(
     results: List[Tuple[str, str, int, float]],
-    min_similarity: float = 0.7
+    min_similarity: Optional[float] = None
 ) -> List[Tuple[str, str, int, float]]:
     """
     Filter results by minimum similarity threshold.
     
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
-        min_similarity: Minimum similarity score to include (0.0-1.0)
+        min_similarity: Minimum similarity score to include (0.0-1.0). If None, uses RAGConfig.MIN_SIMILARITY_THRESHOLD
     
     Returns:
         Filtered results above threshold
     """
+    if min_similarity is None:
+        min_similarity = RAGConfig.MIN_SIMILARITY_THRESHOLD
     return [r for r in results if r[3] >= min_similarity]
 
 
@@ -91,8 +94,7 @@ def rerank_by_keyword_overlap(
         keyword_score = min(1.0, keyword_score + phrase_bonus)
         
         # Combine similarity score with keyword score (weighted)
-        # Increased keyword weight for better precision
-        combined_score = (similarity * 0.65) + (keyword_score * 0.35)
+        combined_score = (similarity * RAGConfig.SIMILARITY_WEIGHT) + (keyword_score * RAGConfig.KEYWORD_WEIGHT)
         
         scored_results.append((chunk_text, filename, page_number, combined_score))
     
@@ -232,7 +234,7 @@ def rerank_by_content_relevance(
 def rerank_by_diversity(
     results: List[Tuple[str, str, int, float]],
     top_k: int = 3,
-    max_per_page: int = 2,
+    max_per_page: Optional[int] = None,
     max_per_document: Optional[int] = None
 ) -> List[Tuple[str, str, int, float]]:
     """
@@ -244,12 +246,17 @@ def rerank_by_diversity(
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
         top_k: Number of results to return
-        max_per_page: Maximum chunks per (filename, page) combination
-        max_per_document: Maximum chunks per document (None = no limit)
+        max_per_page: Maximum chunks per (filename, page) combination. If None, uses RAGConfig.MAX_CHUNKS_PER_PAGE
+        max_per_document: Maximum chunks per document (None = no limit, uses RAGConfig.MAX_CHUNKS_PER_DOCUMENT if set)
     
     Returns:
         Diversified results
     """
+    if max_per_page is None:
+        max_per_page = RAGConfig.MAX_CHUNKS_PER_PAGE
+    if max_per_document is None:
+        max_per_document = RAGConfig.MAX_CHUNKS_PER_DOCUMENT
+    
     selected = []
     page_counts: Dict[Tuple[str, int], int] = {}
     doc_counts: Dict[str, int] = {}
@@ -281,8 +288,8 @@ def rerank_by_diversity(
 
 def rerank_by_length_penalty(
     results: List[Tuple[str, str, int, float]],
-    min_length: int = 50,
-    max_length: int = 2000
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None
 ) -> List[Tuple[str, str, int, float]]:
     """
     Filter results by chunk length and apply length-based scoring.
@@ -291,12 +298,17 @@ def rerank_by_length_penalty(
     
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
-        min_length: Minimum chunk length in characters
-        max_length: Maximum chunk length in characters
+        min_length: Minimum chunk length in characters. If None, uses RAGConfig.MIN_CHUNK_LENGTH
+        max_length: Maximum chunk length in characters. If None, uses RAGConfig.MAX_CHUNK_LENGTH
     
     Returns:
         Filtered and re-scored results
     """
+    if min_length is None:
+        min_length = RAGConfig.MIN_CHUNK_LENGTH
+    if max_length is None:
+        max_length = RAGConfig.MAX_CHUNK_LENGTH
+    
     filtered = []
     
     for chunk_text, filename, page_number, similarity in results:
@@ -307,14 +319,14 @@ def rerank_by_length_penalty(
             continue
         
         # Apply length-based penalty/bonus
-        # Prefer chunks between 100-500 characters (optimal for context)
-        if 100 <= chunk_len <= 500:
+        # Prefer chunks in optimal range
+        if RAGConfig.OPTIMAL_CHUNK_LENGTH_MIN <= chunk_len <= RAGConfig.OPTIMAL_CHUNK_LENGTH_MAX:
             length_score = 1.0
-        elif chunk_len < 100:
+        elif chunk_len < RAGConfig.OPTIMAL_CHUNK_LENGTH_MIN:
             length_score = 0.8
         else:
             # Penalize very long chunks slightly
-            length_score = max(0.9, 1.0 - (chunk_len - 500) / 10000)
+            length_score = max(0.9, 1.0 - (chunk_len - RAGConfig.OPTIMAL_CHUNK_LENGTH_MAX) / 10000)
         
         # Adjust similarity with length score
         adjusted_similarity = similarity * length_score
@@ -360,8 +372,9 @@ def rerank_chunks(
         return rerank_by_keyword_overlap(query, filtered, top_k)
     
     elif strategy == "diversity":
-        max_per_page = kwargs.get("max_per_page", 2)
-        return rerank_by_diversity(filtered, top_k, max_per_page)
+        max_per_page = kwargs.get("max_per_page", RAGConfig.MAX_CHUNKS_PER_PAGE)
+        max_per_document = kwargs.get("max_per_document", RAGConfig.MAX_CHUNKS_PER_DOCUMENT)
+        return rerank_by_diversity(filtered, top_k, max_per_page, max_per_document)
     
     elif strategy == "length":
         filtered = rerank_by_length_penalty(filtered)
@@ -372,7 +385,7 @@ def rerank_chunks(
         # Enhanced pipeline for higher precision
         
         # 1. Length filtering (remove very short/long chunks early)
-        filtered = rerank_by_length_penalty(filtered, min_length=50, max_length=2000)
+        filtered = rerank_by_length_penalty(filtered)
         
         # 2. Content-aware reranking (for mixed-content documents)
         # Keep more candidates for next stages
@@ -382,8 +395,8 @@ def rerank_chunks(
         filtered = rerank_by_keyword_overlap(query, filtered, top_k * 3)
         
         # 4. Diversity reranking (enhanced) - ensures we get diverse sources
-        max_per_page = kwargs.get("max_per_page", 2)
-        max_per_document = kwargs.get("max_per_document", None)
+        max_per_page = kwargs.get("max_per_page", RAGConfig.MAX_CHUNKS_PER_PAGE)
+        max_per_document = kwargs.get("max_per_document", RAGConfig.MAX_CHUNKS_PER_DOCUMENT)
         filtered = rerank_by_diversity(filtered, top_k, max_per_page, max_per_document)
         
         # 5. Final similarity boost - ensure top results have high similarity

@@ -8,6 +8,7 @@ truncation to optimize context quality and stay within model limits.
 from typing import List, Tuple, Dict, Any, Optional
 import hashlib
 import tiktoken
+from config import RAGConfig
 
 
 def calculate_chunk_hash(chunk_text: str, filename: str, page_number: int) -> str:
@@ -32,7 +33,7 @@ def calculate_chunk_hash(chunk_text: str, filename: str, page_number: int) -> st
 
 def deduplicate_chunks(
     results: List[Tuple[str, str, int, float]],
-    similarity_threshold: float = 0.85
+    similarity_threshold: Optional[float] = None
 ) -> List[Tuple[str, str, int, float]]:
     """
     Remove duplicate or highly similar chunks from results.
@@ -42,11 +43,14 @@ def deduplicate_chunks(
     
     Args:
         results: List of (chunk_text, filename, page_number, similarity) tuples
-        similarity_threshold: Minimum similarity to consider chunks duplicates
+        similarity_threshold: Minimum similarity to consider chunks duplicates. If None, uses RAGConfig.DEDUPLICATION_SIMILARITY_THRESHOLD
     
     Returns:
         Deduplicated results
     """
+    if similarity_threshold is None:
+        similarity_threshold = RAGConfig.DEDUPLICATION_SIMILARITY_THRESHOLD
+    
     if not results:
         return []
     
@@ -118,11 +122,11 @@ def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
 
 def assemble_context(
     results: List[Tuple[str, str, int, float]],
-    max_tokens: int = 2000,
+    max_tokens: Optional[int] = None,
     model: str = "gpt-3.5-turbo",
     deduplicate: bool = True,
     prioritize_high_similarity: bool = True,
-    reserve_tokens: int = 200
+    reserve_tokens: Optional[int] = None
 ) -> Tuple[str, List[Dict[str, Any]], int]:
     """
     Assemble context from retrieved chunks with smart window management.
