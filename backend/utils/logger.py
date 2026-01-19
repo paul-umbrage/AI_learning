@@ -121,19 +121,72 @@ class StructuredLogger:
     def log_retrieval(self, request_id: str, query: str, top_k: int,
                      chunks_retrieved: int, retrieval_time_ms: float,
                      use_reranking: bool = False, rerank_strategy: Optional[str] = None,
-                     avg_similarity: Optional[float] = None):
-        """Log RAG retrieval operation"""
-        self.info(
-            "rag_retrieval",
-            request_id=request_id,
-            query_preview=query[:100] if len(query) > 100 else query,
-            top_k=top_k,
-            chunks_retrieved=chunks_retrieved,
-            retrieval_time_ms=round(retrieval_time_ms, 2),
-            use_reranking=use_reranking,
-            rerank_strategy=rerank_strategy,
-            avg_similarity=round(avg_similarity, 3) if avg_similarity else None
-        )
+                     avg_similarity: Optional[float] = None,
+                     min_similarity: Optional[float] = None,
+                     max_similarity: Optional[float] = None,
+                     similarity_std: Optional[float] = None,
+                     chunks_before_rerank: Optional[int] = None,
+                     reranking_impact: Optional[float] = None,
+                     high_quality_chunks: Optional[int] = None,
+                     medium_quality_chunks: Optional[int] = None,
+                     low_quality_chunks: Optional[int] = None):
+        """
+        Log RAG retrieval operation with enhanced quality metrics.
+        
+        Args:
+            request_id: Request identifier
+            query: User query
+            top_k: Requested number of chunks
+            chunks_retrieved: Actual number of chunks retrieved
+            retrieval_time_ms: Retrieval time in milliseconds
+            use_reranking: Whether reranking was used
+            rerank_strategy: Reranking strategy name
+            avg_similarity: Average similarity score
+            min_similarity: Minimum similarity score
+            max_similarity: Maximum similarity score
+            similarity_std: Standard deviation of similarity scores
+            chunks_before_rerank: Number of chunks before reranking
+            reranking_impact: Improvement in average similarity after reranking
+            high_quality_chunks: Number of chunks with similarity >= 0.8
+            medium_quality_chunks: Number of chunks with 0.7 <= similarity < 0.8
+            low_quality_chunks: Number of chunks with similarity < 0.7
+        """
+        log_data = {
+            "request_id": request_id,
+            "query_preview": query[:100] if len(query) > 100 else query,
+            "top_k": top_k,
+            "chunks_retrieved": chunks_retrieved,
+            "retrieval_time_ms": round(retrieval_time_ms, 2),
+            "use_reranking": use_reranking,
+            "rerank_strategy": rerank_strategy,
+        }
+        
+        # Add similarity metrics
+        if avg_similarity is not None:
+            log_data["avg_similarity"] = round(avg_similarity, 3)
+        if min_similarity is not None:
+            log_data["min_similarity"] = round(min_similarity, 3)
+        if max_similarity is not None:
+            log_data["max_similarity"] = round(max_similarity, 3)
+        if similarity_std is not None:
+            log_data["similarity_std"] = round(similarity_std, 3)
+        
+        # Add reranking impact metrics
+        if chunks_before_rerank is not None:
+            log_data["chunks_before_rerank"] = chunks_before_rerank
+            log_data["reranking_reduction"] = chunks_before_rerank - chunks_retrieved
+        if reranking_impact is not None:
+            log_data["reranking_impact"] = round(reranking_impact, 3)
+        
+        # Add quality distribution
+        if high_quality_chunks is not None:
+            log_data["high_quality_chunks"] = high_quality_chunks
+        if medium_quality_chunks is not None:
+            log_data["medium_quality_chunks"] = medium_quality_chunks
+        if low_quality_chunks is not None:
+            log_data["low_quality_chunks"] = low_quality_chunks
+        
+        self.info("rag_retrieval", **log_data)
     
     def log_llm_call(self, request_id: str, model: str, prompt_tokens: int,
                     completion_tokens: int, total_tokens: int,
