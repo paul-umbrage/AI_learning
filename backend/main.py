@@ -8,6 +8,7 @@ import time
 import uuid
 from openai import OpenAI
 from typing import Optional, List, Dict, Any
+from fastapi import Query
 from database import search_similar_chunks, get_db_connection, get_all_pdf_documents, insert_or_update_pdf_document
 from pdf_processor import process_pdf_to_chunks
 from ingest_pdf import get_embeddings
@@ -22,6 +23,9 @@ from utils.error_handling import retry_with_backoff, CircuitBreaker
 from utils.hallucination_detection import detect_hallucinations
 from prompts.templates import build_rag_prompt, PromptStrategy
 from prompts.strategies import select_strategy, get_strategy_from_preset
+from config import RAGConfig
+from metrics import get_metrics_collector
+import statistics
 from redis_cache import (
     get_cached_query_embedding, cache_query_embedding,
     get_cached_query_expansion, cache_query_expansion,
@@ -116,6 +120,42 @@ async def get_cache_stats_endpoint():
     """
     return get_cache_stats()
 
+@app.get("/api/config")
+async def get_config_endpoint():
+    """
+    Get current RAG configuration values
+    """
+    return {
+        "config": RAGConfig.get_config_summary(),
+        "note": "These values can be overridden via environment variables. See env.example for details."
+    }
+
+@app.get("/api/metrics/retrieval")
+async def get_retrieval_metrics(
+    hours: int = Query(24, ge=1, le=168),
+    use_reranking: Optional[bool] = Query(None),
+    rerank_strategy: Optional[str] = Query(None)
+):
+    """
+    Get aggregated retrieval quality metrics.
+    
+    Args:
+        hours: Number of hours to look back (default: 24, max: 168)
+        use_reranking: Filter by reranking usage (optional)
+        rerank_strategy: Filter by reranking strategy (optional)
+    
+    Returns:
+        Aggregated metrics including similarity scores, retrieval times, and quality distribution
+    """
+    metrics_collector = get_metrics_collector()
+    metrics = metrics_collector.get_aggregated_metrics(
+        hours=hours,
+        use_reranking=use_reranking,
+        rerank_strategy=rerank_strategy
+    )
+    
+    return metrics
+
 @retry_with_backoff(max_retries=3, initial_delay=1.0, exceptions=(Exception,))
 def get_query_embedding(query: str, request_id: str = "unknown") -> list:
     """Generate embedding for a query string with retry logic and Redis caching"""
@@ -209,7 +249,7 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
     query_variations = [query]  # Track query variations
     
     # Edge case: Validate top_k
-    top_k = max(1, min(top_k, 20))  # Clamp between 1 and 20
+    top_k = max(1, min(top_k, RAGConfig.MAX_TOP_K))  # Clamp between 1 and MAX_TOP_K
     
     # Query expansion if enabled
     if use_query_expansion and client:
@@ -277,7 +317,7 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
         return "", [], query_variations
     
     # Search for similar chunks (retrieve more initially if reranking or hybrid search)
-    initial_limit = top_k * 3 if (use_reranking or use_hybrid_search or use_query_expansion) else top_k
+    initial_limit = top_k * RAGConfig.RERANK_TOP_K_MULTIPLIER if (use_reranking or use_hybrid_search or use_query_expansion) else top_k
     
     try:
         # Get vector search results with error handling
@@ -313,6 +353,13 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
         else:
             results = vector_results
         
+        # Track chunks before reranking for metrics
+        chunks_before_rerank = len(results) if use_reranking else None
+        avg_similarity_before_rerank = None
+        if use_reranking and results:
+            similarities_before = [r[3] for r in results]
+            avg_similarity_before_rerank = sum(similarities_before) / len(similarities_before) if similarities_before else None
+        
         # Apply reranking if enabled
         if use_reranking:
             results = rerank_chunks(
@@ -320,7 +367,7 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
                 results=results,
                 strategy=rerank_strategy,
                 top_k=top_k,
-                min_similarity=0.7
+                min_similarity=RAGConfig.MIN_SIMILARITY_THRESHOLD
             )
         else:
             # Just take top_k if no reranking
@@ -340,15 +387,13 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
         results = optimize_context_order(results, query)
         
         # Build context with smart assembly (deduplication + token management)
-        # Max tokens: ~2000 for context (leaving room for prompt and response)
-        # Reserve 200 tokens for prompt overhead
         context, sources, context_tokens = assemble_context(
             results=results,
-            max_tokens=2000,
+            max_tokens=RAGConfig.CONTEXT_MAX_TOKENS,
             model=model,
             deduplicate=True,
             prioritize_high_similarity=True,
-            reserve_tokens=200
+            reserve_tokens=RAGConfig.CONTEXT_RESERVE_TOKENS
         )
         
         # Edge case: Empty context after assembly
@@ -361,12 +406,27 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
             )
             return "", [], query_variations
         
-        # Extract similarities for logging
+        # Extract similarities for enhanced logging
         similarities = [s["similarity"] for s in sources]
         retrieval_time_ms = (time.time() - start_time) * 1000
         
-        # Log retrieval
+        # Calculate enhanced metrics
         avg_similarity = sum(similarities) / len(similarities) if similarities else None
+        min_similarity = min(similarities) if similarities else None
+        max_similarity = max(similarities) if similarities else None
+        similarity_std = statistics.stdev(similarities) if len(similarities) > 1 else None
+        
+        # Calculate reranking impact
+        reranking_impact = None
+        if use_reranking and avg_similarity_before_rerank is not None and avg_similarity is not None:
+            reranking_impact = avg_similarity - avg_similarity_before_rerank
+        
+        # Calculate quality distribution
+        high_quality_chunks = sum(1 for s in similarities if s >= 0.8) if similarities else None
+        medium_quality_chunks = sum(1 for s in similarities if 0.7 <= s < 0.8) if similarities else None
+        low_quality_chunks = sum(1 for s in similarities if s < 0.7) if similarities else None
+        
+        # Log retrieval with enhanced metrics
         logger.log_retrieval(
             request_id=request_id,
             query=query,
@@ -375,7 +435,32 @@ def build_rag_context(query: str, filename: Optional[str] = None, top_k: int = 3
             retrieval_time_ms=retrieval_time_ms,
             use_reranking=use_reranking,
             rerank_strategy=rerank_strategy if use_reranking else None,
-            avg_similarity=avg_similarity
+            avg_similarity=avg_similarity,
+            min_similarity=min_similarity,
+            max_similarity=max_similarity,
+            similarity_std=similarity_std,
+            chunks_before_rerank=chunks_before_rerank,
+            reranking_impact=reranking_impact,
+            high_quality_chunks=high_quality_chunks,
+            medium_quality_chunks=medium_quality_chunks,
+            low_quality_chunks=low_quality_chunks
+        )
+        
+        # Record metrics for observability
+        metrics_collector = get_metrics_collector()
+        metrics_collector.record_retrieval(
+            request_id=request_id,
+            query=query,
+            top_k=top_k,
+            chunks_retrieved=len(results),
+            avg_similarity=avg_similarity,
+            min_similarity=min_similarity,
+            max_similarity=max_similarity,
+            use_reranking=use_reranking,
+            rerank_strategy=rerank_strategy if use_reranking else None,
+            retrieval_time_ms=retrieval_time_ms,
+            chunks_before_rerank=chunks_before_rerank,
+            reranking_impact=reranking_impact
         )
         
         # Log hybrid search usage
@@ -747,7 +832,7 @@ async def chat(request: ChatRequest):
                     response=final_response,
                     context=context,
                     sources=sources,
-                    threshold=0.7,
+                    threshold=RAGConfig.HALLUCINATION_THRESHOLD,
                     use_llm_verification=request.use_llm_verification,
                     client=client
                 )
