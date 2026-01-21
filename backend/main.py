@@ -57,13 +57,25 @@ redis_cache = get_redis_cache()
 rate_limiter = RateLimiter(redis_cache=redis_cache)
 app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
-# Initialize OpenAI client
+# Initialize OpenAI client with fail-fast validation
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    print("Warning: OPENAI_API_KEY not found in environment variables")
-    client = None
-else:
+    raise RuntimeError(
+        "CRITICAL: OPENAI_API_KEY not found in environment variables. "
+        "Please set OPENAI_API_KEY in your .env file before starting the server."
+    )
+
+try:
     client = OpenAI(api_key=api_key)
+    # Validate the API key by making a minimal API call
+    # This ensures the key is valid before the server starts
+    # Just get the first model from the list to validate the key
+    list(client.models.list())
+except Exception as e:
+    raise RuntimeError(
+        f"CRITICAL: Invalid OpenAI API key or connection failed. "
+        f"Please check your OPENAI_API_KEY. Error: {e}"
+    )
 
 # Initialize structured logger
 logger = get_logger("rag_system")
@@ -935,10 +947,12 @@ async def chat(request: ChatRequest):
             }
         )
         
+        # Note: Client is validated at startup (fail-fast), so this should never happen
+        # Keeping as a safety check in case of runtime issues
         if not client:
             raise HTTPException(
                 status_code=500,
-                detail="OpenAI API key not configured. Please set OPENAI_API_KEY in your .env file"
+                detail="OpenAI client not initialized. This should not happen as the server validates the API key at startup."
             )
         
         messages = []

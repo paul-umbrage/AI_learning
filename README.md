@@ -46,6 +46,9 @@ docker run --name ai-learning-db \
 
 # Verify it's running
 docker ps
+
+# Enable pgvector extension (required for vector similarity search)
+docker exec -it ai-learning-db psql -U postgres -d ai_learning -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 **Note:** If port 5432 is already in use, you can change it (e.g., `-p 5433:5432`) and update the `DB_PORT` in your `.env` file accordingly.
@@ -80,14 +83,31 @@ docker ps
    cd backend
    ```
 
-2. **Create a virtual environment (recommended):**
+2. **Install dependencies using `uv` (Recommended - Fastest):**
+   
+   First, install `uv` if you haven't already:
+   ```bash
+   # On macOS/Linux
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # Or using pip
+   pip install uv
+   ```
+   
+   Then install dependencies (uv will create virtual environment and install packages):
+   ```bash
+   uv sync
+   ```
+   
+   Activate the virtual environment:
+   ```bash
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+   
+   **Alternative: Using pip (traditional method):**
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install Python dependencies:**
-   ```bash
    pip install -r requirements.txt
    ```
 
@@ -259,7 +279,8 @@ Visit `http://localhost:8000/docs` for interactive Swagger documentation where y
 │   ├── prompts/            # Prompt templates and strategies
 │   ├── utils/              # Utilities (logging, error handling, etc.)
 │   ├── evaluation/         # Evaluation metrics
-│   └── requirements.txt    # Python dependencies
+│   ├── pyproject.toml      # Python dependencies and project config (recommended)
+│   └── requirements.txt    # Python dependencies (kept for backward compatibility)
 │
 ├── frontend/               # Angular frontend
 │   ├── src/
@@ -298,9 +319,10 @@ Visit `http://localhost:8000/docs` for interactive Swagger documentation where y
 
 **Backend won't start:**
 - Check that port 8000 is not already in use: `lsof -i :8000` (macOS/Linux) or `netstat -ano | findstr :8000` (Windows)
-- Verify your `.env` file exists and has a valid OpenAI API key
-- Ensure all dependencies are installed: `pip install -r requirements.txt`
+- Verify your `.env` file exists and has a valid OpenAI API key (server will fail fast if missing/invalid)
+- Ensure all dependencies are installed: `uv sync` (or `pip install -r requirements.txt` if using pip)
 - Check database connection: Verify PostgreSQL is running and credentials are correct
+- If using Redis with `REDIS_STRICT_MODE=true`, ensure Redis is running and accessible
 
 **Database connection errors:**
 - Verify PostgreSQL is running: `docker ps` (if using Docker) or `pg_isready` (if local)
@@ -309,9 +331,12 @@ Visit `http://localhost:8000/docs` for interactive Swagger documentation where y
 - For Docker: Make sure the container is running: `docker start ai-learning-db`
 
 **OpenAI API errors:**
-- Verify your API key is correct and has credits
-- Check your OpenAI account usage limits
-- Ensure the API key is set in `.env` file (not just `env.example`)
+- **Server won't start**: The server validates the API key at startup. If the server fails to start, check:
+  - API key is set in `.env` file (not just `env.example`)
+  - API key is valid and has credits
+  - Network connectivity to OpenAI API
+- **Runtime errors**: Check your OpenAI account usage limits
+- The server will fail fast with a clear error message if the API key is missing or invalid
 
 ### Frontend Issues
 
@@ -404,6 +429,11 @@ All environment variables are configured in `backend/.env`:
 | `DB_NAME` | Database name | Yes (default: ai_learning) |
 | `DB_USER` | Database user | Yes (default: postgres) |
 | `DB_PASSWORD` | Database password | Yes |
+| `REDIS_HOST` | Redis host (optional) | No (default: localhost) |
+| `REDIS_PORT` | Redis port (optional) | No (default: 6379) |
+| `REDIS_STRICT_MODE` | Fail fast if Redis connection fails | No (default: false) |
+
+**Note:** The server will now fail to start if `OPENAI_API_KEY` is missing or invalid. This prevents deployment of broken configurations. For Redis, set `REDIS_STRICT_MODE=true` in production to ensure Redis is available.
 
 ## 🤝 Contributing
 
