@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+import json
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -57,13 +58,25 @@ redis_cache = get_redis_cache()
 rate_limiter = RateLimiter(redis_cache=redis_cache)
 app.add_middleware(RateLimitMiddleware, rate_limiter=rate_limiter)
 
-# Initialize OpenAI client
+# Initialize OpenAI client with fail-fast validation
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    print("Warning: OPENAI_API_KEY not found in environment variables")
-    client = None
-else:
+    raise RuntimeError(
+        "CRITICAL: OPENAI_API_KEY not found in environment variables. "
+        "Please set OPENAI_API_KEY in your .env file before starting the server."
+    )
+
+try:
     client = OpenAI(api_key=api_key)
+    # Validate the API key by making a minimal API call
+    # This ensures the key is valid before the server starts
+    # Just get the first model from the list to validate the key
+    list(client.models.list())
+except Exception as e:
+    raise RuntimeError(
+        f"CRITICAL: Invalid OpenAI API key or connection failed. "
+        f"Please check your OPENAI_API_KEY. Error: {e}"
+    )
 
 # Initialize structured logger
 logger = get_logger("rag_system")
@@ -935,10 +948,12 @@ async def chat(request: ChatRequest):
             }
         )
         
+        # Note: Client is validated at startup (fail-fast), so this should never happen
+        # Keeping as a safety check in case of runtime issues
         if not client:
             raise HTTPException(
                 status_code=500,
-                detail="OpenAI API key not configured. Please set OPENAI_API_KEY in your .env file"
+                detail="OpenAI client not initialized. This should not happen as the server validates the API key at startup."
             )
         
         messages = []
@@ -1391,14 +1406,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             
             processing_time_ms = (time.time() - start_time) * 1000
             
-            logger.info(
-                "pdf_upload_success",
-                request_id=request_id,
-                filename=file.filename,
-                chunks_created=len(chunks_with_embeddings),
-                processing_time_ms=processing_time_ms
-            )
-            
+            # Prepare response data
             response_data = {
                 "message": "PDF uploaded and ingested successfully",
                 "filename": file.filename,
@@ -1406,12 +1414,18 @@ async def upload_pdf(file: UploadFile = File(...)):
                 "processing_time_ms": round(processing_time_ms, 2)
             }
             
-            # Return as regular JSON response (not JSONResponse wrapper)
-            # This ensures proper handling in Angular HttpClient
-            return JSONResponse(
-                status_code=200,
-                content=response_data
+            logger.info(
+                "pdf_upload_success",
+                request_id=request_id,
+                filename=file.filename,
+                chunks_created=len(chunks_with_embeddings),
+                processing_time_ms=processing_time_ms,
+                response_data=response_data
             )
+            
+            # Return JSONResponse explicitly to ensure proper HTTP response
+            # This ensures Angular HttpClient receives the response correctly
+            return JSONResponse(content=response_data, status_code=200)
             
         finally:
             # Clean up temporary file

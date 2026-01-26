@@ -183,7 +183,7 @@ def main():
     if all_syntax_valid:
         print("\n✅ All syntax tests passed! Code is syntactically correct.")
         print("⚠️  Note: Some import tests may fail if dependencies are not installed.")
-        print("   Install dependencies with: pip install -r requirements.txt")
+        print("   Install dependencies with: uv sync (or pip install -r requirements.txt)")
         return 0
     else:
         print("\n❌ Some syntax tests failed. Please fix syntax errors.")

@@ -38,6 +38,9 @@ class RedisCache:
         if not REDIS_AVAILABLE:
             return
         
+        # Check if strict mode is enabled (fail fast in production)
+        redis_strict_mode = os.getenv("REDIS_STRICT_MODE", "false").lower() == "true"
+        
         try:
             # Get Redis configuration from environment
             redis_host = os.getenv("REDIS_HOST", "localhost")
@@ -64,9 +67,18 @@ class RedisCache:
             print(f"Redis cache enabled: {redis_host}:{redis_port}/{redis_db}")
             
         except Exception as e:
-            print(f"Warning: Redis connection failed. Caching disabled: {e}")
-            self.enabled = False
-            self.redis_client = None
+            if redis_strict_mode:
+                raise RuntimeError(
+                    f"CRITICAL: Redis connection failed and REDIS_STRICT_MODE is enabled. "
+                    f"Please check your Redis configuration. "
+                    f"Host: {redis_host}, Port: {redis_port}, DB: {redis_db}. "
+                    f"Error: {e}"
+                )
+            else:
+                print(f"Warning: Redis connection failed. Caching disabled: {e}")
+                print("Note: Set REDIS_STRICT_MODE=true to fail fast if Redis is required.")
+                self.enabled = False
+                self.redis_client = None
     
     def _generate_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate a cache key from prefix and arguments"""
