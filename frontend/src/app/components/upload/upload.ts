@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -19,8 +19,12 @@ export class UploadComponent {
   uploadMessage = '';
   showConfirmation = false;
   uploadResult: any = null;
+  private progressInterval: any = null;
 
-  constructor(private http: HttpClient) {}
+  constructor(
+    private http: HttpClient,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -45,45 +49,71 @@ export class UploadComponent {
       return;
     }
 
+    // Clear any existing progress interval
+    this.clearProgressInterval();
+
+    // Reset state
     this.isUploading = true;
     this.uploadProgress = 10;
     this.uploadStatus = 'idle';
     this.uploadMessage = 'Uploading and processing PDF (this may take a few minutes)...';
+    this.uploadResult = null;
+    this.showConfirmation = false;
 
     const formData = new FormData();
     formData.append('file', this.selectedFile);
 
-    // Use a simple POST request with a long timeout
-    // Processing happens server-side, so we just wait for the response
+    console.log('Starting upload for file:', this.selectedFile.name);
+
+    // Make POST request to upload endpoint
     this.http.post<any>('http://localhost:8000/api/upload', formData, {
-      // Set timeout to 10 minutes for large PDFs
+      // No special options needed - default behavior should work
     }).subscribe({
       next: (response) => {
-        console.log('Upload response received:', response);
-        this.handleUploadSuccess(response);
+        console.log('✅ Upload response received:', response);
+        console.log('Response type:', typeof response);
+        console.log('Response data:', JSON.stringify(response));
+        
+        // Handle the response - it should be the data directly from FastAPI
+        const result = response;
+        this.handleUploadSuccess(result);
       },
       error: (error) => {
-        console.error('Upload error:', error);
+        console.error('❌ Upload error:', error);
+        console.error('Error status:', error?.status);
+        console.error('Error message:', error?.message);
+        console.error('Error body:', error?.error);
         this.handleUploadError(error);
+      },
+      complete: () => {
+        console.log('✅ Upload request observable completed');
       }
     });
 
     // Simulate progress since we can't track server-side processing
     // This gives user feedback that something is happening
     let progress = 10;
-    const progressInterval = setInterval(() => {
+    this.progressInterval = setInterval(() => {
+      // Check if upload is still in progress
       if (!this.isUploading) {
-        clearInterval(progressInterval);
+        console.log('Upload no longer in progress, clearing interval');
+        this.clearProgressInterval();
         return;
       }
-      progress = Math.min(progress + 2, 90); // Gradually increase to 90%
-      this.uploadProgress = progress;
+      // Only update if we haven't reached completion
+      if (this.uploadProgress < 95) {
+        progress = Math.min(progress + 2, 95); // Gradually increase to 95% (leave room for completion)
+        this.uploadProgress = progress;
+        console.log('Progress updated to:', this.uploadProgress + '%');
+      }
     }, 2000); // Update every 2 seconds
+  }
 
-    // Clean up interval when upload completes
-    setTimeout(() => {
-      clearInterval(progressInterval);
-    }, 600000); // 10 minutes max
+  private clearProgressInterval() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
+    }
   }
 
   closeConfirmation() {
@@ -93,6 +123,7 @@ export class UploadComponent {
     this.uploadMessage = '';
     this.uploadResult = null;
     this.uploadProgress = 0;
+    this.clearProgressInterval();
     
     // Reset file input
     const fileInput = document.getElementById('file-input') as HTMLInputElement;
@@ -114,17 +145,39 @@ export class UploadComponent {
   }
 
   private handleUploadSuccess(result: any) {
-    console.log('Upload success:', result);
+    console.log('🎉 Handling upload success:', result);
+    
+    // Clear progress interval FIRST to prevent any race conditions
+    this.clearProgressInterval();
+    console.log('Progress interval cleared');
+    
+    // Immediately update progress to 100% before changing other state
+    this.uploadProgress = 100;
+    console.log('Progress set to 100%');
+    
+    // Update state immediately
     this.uploadResult = result;
     this.uploadStatus = 'success';
     this.uploadMessage = `Successfully uploaded and ingested ${result?.filename || 'PDF'}`;
     this.showConfirmation = true;
     this.isUploading = false;
-    this.uploadProgress = 100;
+    
+    // Force change detection
+    this.cdr.detectChanges();
+    
+    console.log('✅ Upload state updated successfully');
+    console.log('Upload result:', this.uploadResult);
+    console.log('Upload status:', this.uploadStatus);
+    console.log('Show confirmation:', this.showConfirmation);
+    console.log('Is uploading:', this.isUploading);
+    console.log('Upload progress:', this.uploadProgress);
   }
 
   private handleUploadError(error: any) {
-    console.error('Upload error:', error);
+    console.error('❌ Handling upload error:', error);
+    // Clear progress interval first
+    this.clearProgressInterval();
+    
     this.isUploading = false;
     this.uploadStatus = 'error';
     
@@ -142,5 +195,8 @@ export class UploadComponent {
     }
     
     this.uploadProgress = 0;
+    
+    // Force change detection
+    this.cdr.detectChanges();
   }
 }

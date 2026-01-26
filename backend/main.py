@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+import json
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -1405,14 +1406,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             
             processing_time_ms = (time.time() - start_time) * 1000
             
-            logger.info(
-                "pdf_upload_success",
-                request_id=request_id,
-                filename=file.filename,
-                chunks_created=len(chunks_with_embeddings),
-                processing_time_ms=processing_time_ms
-            )
-            
+            # Prepare response data
             response_data = {
                 "message": "PDF uploaded and ingested successfully",
                 "filename": file.filename,
@@ -1420,12 +1414,18 @@ async def upload_pdf(file: UploadFile = File(...)):
                 "processing_time_ms": round(processing_time_ms, 2)
             }
             
-            # Return as regular JSON response (not JSONResponse wrapper)
-            # This ensures proper handling in Angular HttpClient
-            return JSONResponse(
-                status_code=200,
-                content=response_data
+            logger.info(
+                "pdf_upload_success",
+                request_id=request_id,
+                filename=file.filename,
+                chunks_created=len(chunks_with_embeddings),
+                processing_time_ms=processing_time_ms,
+                response_data=response_data
             )
+            
+            # Return JSONResponse explicitly to ensure proper HTTP response
+            # This ensures Angular HttpClient receives the response correctly
+            return JSONResponse(content=response_data, status_code=200)
             
         finally:
             # Clean up temporary file
