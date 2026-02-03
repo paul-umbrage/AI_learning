@@ -29,7 +29,7 @@ API base for the frontend: **https://ai-learning-api.fly.dev/api**
 
 ## 2. Deploy frontend on Vercel
 
-**Note:** The repo has an `api.disabled/` folder (renamed from `api/`) so Vercel only builds the frontend and does not try to deploy a Python serverless function (which would exceed size limits). Backend runs on Fly.io only.
+**Note:** The repo has no `api/` folder, so Vercel only builds the frontend. Backend runs on Fly.io only (adding `api/` would make Vercel try to deploy a Python serverless function and exceed size limits).
 
 1. Push your repo and go to **[vercel.com/new](https://vercel.com/new)**. Import the repo.
 2. **Root Directory:** leave as **empty** (use repo root). The root `vercel.json` defines the frontend build.
