@@ -107,7 +107,11 @@ dist/
 *.swp
 *~
 
-# Exclude all .md files except README.md
+# Exclude all .md files except README and deployment docs
 *.md
 !README.md
 !**/README.md
+!DEPLOY_VERCEL_AND_FLY.md
+!FLY_DEPLOYMENT.md
+!VERCEL_FULL_SETUP.md
+.vercel

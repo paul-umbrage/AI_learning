@@ -2,10 +2,23 @@
 PDF processing utilities for extracting text, chunking, and preparing for embedding
 """
 import pdfplumber
-import fitz  # PyMuPDF
 import os
+
+try:
+    import fitz  # PyMuPDF (optional; not installed on Vercel serverless)
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    fitz = None
+    PYMUPDF_AVAILABLE = False
 from typing import List, Dict, Optional, Any
-import tiktoken
+
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    tiktoken = None
+    TIKTOKEN_AVAILABLE = False
+
 from contextual_chunking import contextual_chunk, ContentType
 
 def extract_text_from_pdf(pdf_path: str) -> List[Dict[str, any]]:
@@ -31,19 +44,21 @@ def extract_text_from_pdf(pdf_path: str) -> List[Dict[str, any]]:
                         'text': text.strip()
                     })
     except Exception as e:
-        print(f"Error with pdfplumber, trying PyMuPDF: {e}")
-        # Fallback to PyMuPDF
-        doc = fitz.open(pdf_path)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text = page.get_text()
-            if text and text.strip():
-                pages_data.append({
-                    'page_number': page_num + 1,
-                    'text': text.strip()
-                })
-        doc.close()
-    
+        if PYMUPDF_AVAILABLE and fitz is not None:
+            print(f"Error with pdfplumber, trying PyMuPDF: {e}")
+            doc = fitz.open(pdf_path)
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                text = page.get_text()
+                if text and text.strip():
+                    pages_data.append({
+                        'page_number': page_num + 1,
+                        'text': text.strip()
+                    })
+            doc.close()
+        else:
+            raise
+
     return pages_data
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
@@ -89,43 +104,30 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[st
 
 def chunk_text_by_tokens(text: str, max_tokens: int = 500, overlap_tokens: int = 50) -> List[str]:
     """
-    Split text into chunks based on token count (more accurate for embeddings)
-    
-    Args:
-        text: Text to chunk
-        max_tokens: Maximum tokens per chunk
-        overlap_tokens: Number of tokens to overlap
-    
-    Returns:
-        List of text chunks
+    Split text into chunks based on token count (more accurate for embeddings).
+    Falls back to character-based chunking when tiktoken is not available (e.g. Vercel serverless).
     """
-    encoding = tiktoken.get_encoding("cl100k_base")  # Used by GPT-3.5 and GPT-4
-    
-    # Encode text to tokens
-    tokens = encoding.encode(text)
-    
-    if len(tokens) <= max_tokens:
-        return [text]
-    
-    chunks = []
-    start = 0
-    
-    while start < len(tokens):
-        end = start + max_tokens
-        
-        # Decode chunk
-        chunk_tokens = tokens[start:end]
-        chunk_text = encoding.decode(chunk_tokens)
-        
-        if chunk_text.strip():
-            chunks.append(chunk_text.strip())
-        
-        # Move start with overlap
-        start = end - overlap_tokens
-        if start >= len(tokens):
-            break
-    
-    return chunks
+    if TIKTOKEN_AVAILABLE and tiktoken is not None:
+        encoding = tiktoken.get_encoding("cl100k_base")  # Used by GPT-3.5 and GPT-4
+        tokens = encoding.encode(text)
+        if len(tokens) <= max_tokens:
+            return [text]
+        chunks = []
+        start = 0
+        while start < len(tokens):
+            end = start + max_tokens
+            chunk_tokens = tokens[start:end]
+            chunk_text = encoding.decode(chunk_tokens)
+            if chunk_text.strip():
+                chunks.append(chunk_text.strip())
+            start = end - overlap_tokens
+            if start >= len(tokens):
+                break
+        return chunks
+    # Fallback: ~4 chars per token
+    chunk_size = max_tokens * 4
+    overlap = overlap_tokens * 4
+    return chunk_text(text, chunk_size=chunk_size, overlap=overlap)
 
 def process_pdf_to_chunks(
     pdf_path: str, 

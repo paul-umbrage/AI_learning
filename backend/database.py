@@ -11,8 +11,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_db_connection():
-    """Create and return a database connection"""
+    """Create and return a database connection. Uses DATABASE_URL if set (e.g. Neon, Vercel Postgres), else DB_* env vars."""
     try:
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            # Neon and others often use postgres://; psycopg2 accepts it
+            conn = psycopg2.connect(database_url)
+            return conn
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "localhost"),
             port=os.getenv("DB_PORT", "5432"),

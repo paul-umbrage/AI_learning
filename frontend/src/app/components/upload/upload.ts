@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { HttpClient, HttpEventType, HttpResponse } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-upload',
@@ -66,14 +67,14 @@ export class UploadComponent {
     console.log('Starting upload for file:', this.selectedFile.name);
 
     // Make POST request to upload endpoint
-    this.http.post<any>('http://localhost:8000/api/upload', formData, {
+    this.http.post<any>(`${environment.apiUrl}/upload`, formData, {
       // No special options needed - default behavior should work
     }).subscribe({
       next: (response) => {
         console.log('✅ Upload response received:', response);
         console.log('Response type:', typeof response);
         console.log('Response data:', JSON.stringify(response));
-        
+
         // Handle the response - it should be the data directly from FastAPI
         const result = response;
         this.handleUploadSuccess(result);
@@ -124,7 +125,7 @@ export class UploadComponent {
     this.uploadResult = null;
     this.uploadProgress = 0;
     this.clearProgressInterval();
-    
+
     // Reset file input
     const fileInput = document.getElementById('file-input') as HTMLInputElement;
     if (fileInput) {
@@ -136,7 +137,7 @@ export class UploadComponent {
     this.selectedFile = null;
     this.uploadStatus = 'idle';
     this.uploadMessage = '';
-    
+
     // Reset file input
     const fileInput = document.getElementById('file-input') as HTMLInputElement;
     if (fileInput) {
@@ -146,25 +147,25 @@ export class UploadComponent {
 
   private handleUploadSuccess(result: any) {
     console.log('🎉 Handling upload success:', result);
-    
+
     // Clear progress interval FIRST to prevent any race conditions
     this.clearProgressInterval();
     console.log('Progress interval cleared');
-    
+
     // Immediately update progress to 100% before changing other state
     this.uploadProgress = 100;
     console.log('Progress set to 100%');
-    
+
     // Update state immediately
     this.uploadResult = result;
     this.uploadStatus = 'success';
     this.uploadMessage = `Successfully uploaded and ingested ${result?.filename || 'PDF'}`;
     this.showConfirmation = true;
     this.isUploading = false;
-    
+
     // Force change detection
     this.cdr.detectChanges();
-    
+
     console.log('✅ Upload state updated successfully');
     console.log('Upload result:', this.uploadResult);
     console.log('Upload status:', this.uploadStatus);
@@ -177,10 +178,10 @@ export class UploadComponent {
     console.error('❌ Handling upload error:', error);
     // Clear progress interval first
     this.clearProgressInterval();
-    
+
     this.isUploading = false;
     this.uploadStatus = 'error';
-    
+
     // Provide more detailed error messages
     if (error.status === 0) {
       this.uploadMessage = 'Connection error. Make sure the backend server is running on port 8000.';
@@ -193,9 +194,9 @@ export class UploadComponent {
     } else {
       this.uploadMessage = error.error?.detail || error.message || 'Failed to upload PDF';
     }
-    
+
     this.uploadProgress = 0;
-    
+
     // Force change detection
     this.cdr.detectChanges();
   }

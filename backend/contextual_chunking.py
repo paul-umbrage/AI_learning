@@ -9,7 +9,29 @@ import re
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Any
 from enum import Enum
-import tiktoken
+
+try:
+    import tiktoken
+    _TIKTOKEN_AVAILABLE = True
+except ImportError:
+    tiktoken = None
+    _TIKTOKEN_AVAILABLE = False
+
+
+class _FakeEncoding:
+    """Approximate token count when tiktoken is not available (~4 chars per token)."""
+    def encode(self, text: str):
+        return list(range(0, max(1, len(text)), 4))
+    def decode(self, tokens):
+        return ""  # not used for chunking
+
+
+def _get_encoding():
+    if _TIKTOKEN_AVAILABLE and tiktoken is not None:
+        return tiktoken.get_encoding("cl100k_base")
+    return _FakeEncoding()
+
+
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -117,7 +139,7 @@ def chunk_by_sentences(
         List of sentence-aware chunks
     """
     if not encoding:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        encoding = _get_encoding()
     
     sentences = split_into_sentences(text)
     
@@ -263,7 +285,7 @@ def semantic_chunk(
         List of semantically-aware chunks
     """
     if not encoding:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        encoding = _get_encoding()
     
     sentences = split_into_sentences(text)
     
@@ -358,7 +380,7 @@ def chunk_list_content(text: str, max_tokens: int = 500, overlap_items: int = 1)
     Returns:
         List of chunks preserving list structure
     """
-    encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = _get_encoding()
     
     # Split by list item markers
     list_item_pattern = r'(?=^\s*[-•*]\s+|^\s*\d+[.)]\s+|^\s*[a-z][.)]\s+)'
@@ -406,7 +428,7 @@ def chunk_table_content(text: str, max_tokens: int = 500) -> List[str]:
     Returns:
         List of chunks preserving table rows
     """
-    encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = _get_encoding()
     
     lines = text.split('\n')
     if not lines:
@@ -462,7 +484,7 @@ def contextual_chunk(
             - start_index: int (character position)
             - end_index: int
     """
-    encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = _get_encoding()
     
     # Detect content type
     content_type = detect_content_type(text)

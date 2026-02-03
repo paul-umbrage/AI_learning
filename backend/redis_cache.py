@@ -38,6 +38,14 @@ class RedisCache:
         if not REDIS_AVAILABLE:
             return
         
+        # Skip Redis when explicitly disabled (e.g. Vercel serverless, demo without Redis)
+        if os.getenv("DISABLE_REDIS", "").lower() in ("1", "true", "yes"):
+            self.enabled = False
+            return
+        if os.getenv("REDIS_ENABLED", "true").lower() == "false":
+            self.enabled = False
+            return
+        
         # Check if strict mode is enabled (fail fast in production)
         redis_strict_mode = os.getenv("REDIS_STRICT_MODE", "false").lower() == "true"
         

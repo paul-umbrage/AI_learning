@@ -7,7 +7,14 @@ truncation to optimize context quality and stay within model limits.
 
 from typing import List, Tuple, Dict, Any, Optional
 import hashlib
-import tiktoken
+
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    tiktoken = None
+    TIKTOKEN_AVAILABLE = False
+
 from config import RAGConfig
 
 
@@ -103,21 +110,20 @@ def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
     Returns:
         Number of tokens
     """
-    try:
-        # Map model names to encodings
-        encoding_name = {
-            "gpt-3.5-turbo": "cl100k_base",
-            "gpt-4": "cl100k_base",
-            "gpt-4-turbo-preview": "cl100k_base",
-            "gpt-4o": "cl100k_base",
-            "gpt-4o-mini": "cl100k_base"
-        }.get(model, "cl100k_base")
-        
-        encoding = tiktoken.get_encoding(encoding_name)
-        return len(encoding.encode(text))
-    except Exception:
-        # Fallback: rough estimate (1 token ≈ 4 characters)
-        return len(text) // 4
+    if TIKTOKEN_AVAILABLE and tiktoken is not None:
+        try:
+            encoding_name = {
+                "gpt-3.5-turbo": "cl100k_base",
+                "gpt-4": "cl100k_base",
+                "gpt-4-turbo-preview": "cl100k_base",
+                "gpt-4o": "cl100k_base",
+                "gpt-4o-mini": "cl100k_base"
+            }.get(model, "cl100k_base")
+            encoding = tiktoken.get_encoding(encoding_name)
+            return len(encoding.encode(text))
+        except Exception:
+            pass
+    return len(text) // 4
 
 
 def assemble_context(

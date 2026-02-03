@@ -1,0 +1,5 @@
+# Don't bundle frontend in the serverless function; build uses it separately
+frontend/node_modules
+frontend/.angular
+frontend/dist
+documents/*.pdf

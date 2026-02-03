@@ -42,10 +42,15 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI(title="AI Learning Backend API")
 
-# Configure CORS to allow Angular frontend
+# Configure CORS: localhost + Vercel (*.vercel.app)
+_cors_origins = ["http://localhost:4200", "http://localhost:3000"]
+_extra = os.getenv("CORS_ORIGINS", "")
+if _extra:
+    _cors_origins.extend(s.strip() for s in _extra.split(",") if s.strip())
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],  # Angular default port
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,10 +73,9 @@ if not api_key:
 
 try:
     client = OpenAI(api_key=api_key)
-    # Validate the API key by making a minimal API call
-    # This ensures the key is valid before the server starts
-    # Just get the first model from the list to validate the key
-    list(client.models.list())
+    # Validate the API key by making a minimal API call (skip if SKIP_OPENAI_VALIDATION=true, e.g. serverless cold start)
+    if os.getenv("SKIP_OPENAI_VALIDATION", "").lower() not in ("1", "true", "yes"):
+        list(client.models.list())
 except Exception as e:
     raise RuntimeError(
         f"CRITICAL: Invalid OpenAI API key or connection failed. "
